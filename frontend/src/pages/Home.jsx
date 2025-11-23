@@ -57,10 +57,19 @@ function Home() {
       <div className="h-[1px] w-20 mt-1 rounded-full bg-[#e4d9cb]" />
     </div>
 
-    {/* button */}
-    <button className="mt-6 inline-flex items-center rounded-full border border-[#89ad8f] bg-[#e3f3e6] px-8 py-3 text-[16px] font-semibold text-[#305b39] shadow-[0_4px_0_0_#89ad8f] hover:translate-y-[1px] transition">
-      Book Appointment
-    </button>
+    {/* Buttons row */}
+<div className="mt-6 flex gap-4">
+  {/* Book Appointment */}
+  <button className="inline-flex items-center rounded-full border border-[#89ad8f] bg-[#e3f3e6] px-8 py-3 text-[16px] font-semibold text-[#305b39] shadow-[0_4px_0_0_#89ad8f] hover:translate-y-[1px] hover:shadow-[0_3px_0_0_#89ad8f] transition">
+    Book Appointment
+  </button>
+
+  {/* Login button – same style, slightly lighter */}
+  <button className="inline-flex items-center rounded-full border border-[#89ad8f] bg-[#e3f3e6] px-8 py-3 text-[16px] font-semibold text-[#305b39] shadow-[0_4px_0_0_#89ad8f] hover:translate-y-[1px] hover:shadow-[0_3px_0_0_#89ad8f] transition">
+    Login
+  </button>
+</div>
+
   </div>
 
 {/* RIGHT ILLUSTRATION */}
