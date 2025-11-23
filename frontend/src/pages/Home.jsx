@@ -65,9 +65,12 @@ function Home() {
   </button>
 
   {/* Login button – same style, slightly lighter */}
-  <button className="inline-flex items-center rounded-full border border-[#89ad8f] bg-[#e3f3e6] px-8 py-3 text-[16px] font-semibold text-[#305b39] shadow-[0_4px_0_0_#89ad8f] hover:translate-y-[1px] hover:shadow-[0_3px_0_0_#89ad8f] transition">
-    Login
-  </button>
+ <button
+  onClick={() => (window.location.href = "/login")}
+  className="inline-flex items-center rounded-full border border-[#89ad8f] bg-[#e3f3e6] px-8 py-3 text-[16px] font-semibold text-[#305b39] shadow-[0_4px_0_0_#89ad8f] hover:translate-y-[1px] hover:shadow-[0_3px_0_0_#89ad8f] transition"
+>
+  Login
+</button>
 </div>
 
   </div>
