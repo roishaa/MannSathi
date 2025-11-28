@@ -1,6 +1,7 @@
 function Home() {
   return (
-    <div className="min-h-screen bg-[#fffaf4] px-6 py-10">
+    <div className="min-h-screen bg-[#fffff] px-6 py-10">
+
       {/* NAVBAR */}
       <header className="flex items-center justify-between">
         {/* Left Logo Ribbon */}
@@ -35,7 +36,7 @@ function Home() {
 <section className="mt-24 grid grid-cols-1 md:grid-cols-2 gap-10 items-center px-4">
 
   {/* LEFT TEXT AREA */}
-  <div className="ml-4">   {/* ← small shift only */}
+  <div className="ml-10">   {/* ← small shift only */}
     
     {/* pastel chips */}
     <div className="flex gap-4 mb-6">
@@ -45,17 +46,43 @@ function Home() {
 
     {/* MAIN TEXT (bigger + cleaner) */}
     <p className="text-[24px] leading-[1.65] text-neutral-900 font-medium">
-      Your <span className="font-semibold">Mental health</span> is just <br />
+      Your <span className="font-bold">Mental health</span> is just <br />
       as important as <br />
       your physical health, <br />
       take care of both.
     </p>
 
-    {/* underline */}
-    <div className="mt-4">
-      <div className="h-[2px] w-28 rounded-full bg-[#d2c3b4]" />
-      <div className="h-[1px] w-20 mt-1 rounded-full bg-[#e4d9cb]" />
-    </div>
+    {/* wavyline */}
+ <div className="mt-4">
+  {/* Wavy line with shadow */}
+  <svg
+    className="w-60"    // make longer (you can change to w-72, w-80, etc.)
+    height="20"
+    viewBox="0 0 300 20"
+    fill="none"
+    xmlns="http://www.w3.org/2000/svg"
+  >
+    <defs>
+      {/* soft shadow filter */}
+      <filter id="wavyShadow" x="-20" y="-20" width="400" height="80">
+        <feDropShadow dx="0" dy="2" stdDeviation="2" floodColor="#c8b7a7" floodOpacity="0.5"/>
+      </filter>
+    </defs>
+
+    <path
+      d="M0 10 
+         Q 40 0 80 10 
+         T 160 10 
+         T 240 10 
+         T 320 10"
+      stroke="#d2c3b4"
+      strokeWidth="4"
+      strokeLinecap="round"
+      filter="url(#wavyShadow)"   // apply shadow
+    />
+  </svg>
+</div>
+
 
     {/* Buttons row */}
 <div className="mt-6 flex gap-4">
@@ -101,7 +128,7 @@ function Home() {
 </section>
 
 
-     <section className="mt-24">
+<section className="mt-24">
   <div className="overflow-x-auto scrollbar-hide pl-12"> 
     {/* pl-12 → pushes the whole card row to the RIGHT */}
     
@@ -143,6 +170,48 @@ function Home() {
     </div>
   </div>
 </section>
+{/* EMOTIONAL CHECK-IN SECTION */}
+<section className="mt-20 mb-24 flex flex-col items-center gap-10 px-4">
+  {/* Top CTA bar */}
+  <button
+    className="w-full max-w-xl flex items-center justify-between rounded-md border border-[#2c7365] bg-[#5fb1a0] px-6 py-3 text-sm font-semibold text-[#0d1b1a] shadow-[0_6px_0_0_rgba(33,92,76,0.8)] hover:translate-y-[1px] hover:shadow-[0_4px_0_0_rgba(33,92,76,0.8)] transition"
+  >
+    <span>Find out what’s really on your mind</span>
+    <span className="flex h-7 w-7 items-center justify-center rounded-[4px] bg-[#0d1b1a] text-xs text-white">
+      ?
+    </span>
+  </button>
+
+  {/* Main content */}
+  <div className="w-full max-w-5xl grid grid-cols-1 md:grid-cols-2 gap-10 md:gap-16 items-center">
+    {/* LEFT IMAGE BLOCK */}
+    <div className="relative flex justify-center md:justify-start">
+      {/* square placeholder (replace with your own image if you want) */}
+      <div className="h-64 w-56 rounded-md border border-[#f0e6d8] bg-[url('/path-to-your-texture.png')] bg-cover bg-center bg-[#f8f4ec]" />
+      {/* overlapping circle */}
+      <div className="absolute -bottom-10 left-10 h-32 w-32 rounded-full bg-[#dedede]" />
+    </div>
+
+    {/* RIGHT TEXT BLOCK */}
+    <div className="flex flex-col gap-4">
+      <div className="flex gap-4">
+        {/* vertical line */}
+        <div className="w-[2px] bg-[#c4b9aa] mt-1" />
+        <p className="text-sm leading-relaxed text-neutral-800 max-w-sm">
+          Feeling lost or overwhelmed? <br />
+          <span className="font-semibold">MannSathi</span> helps you check in with
+          your emotions, talk to experts, and find peace of mind.
+        </p>
+      </div>
+
+      <button className="mt-2 inline-flex items-center gap-2 text-sm font-semibold text-neutral-900 hover:gap-3 transition">
+        Explore
+        <span className="text-lg leading-none">›</span>
+      </button>
+    </div>
+  </div>
+</section>
+
 
     </div>
   );

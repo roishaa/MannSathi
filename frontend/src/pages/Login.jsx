@@ -1,4 +1,5 @@
 // src/Login.jsx
+import { Link } from "react-router-dom";
 import { useState } from "react";
 
 const API_BASE = "http://127.0.0.1:8000";
@@ -64,7 +65,7 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen bg-[#fffaf4] px-6 py-10">
+    <div className="min-h-screen bg-[#fffff] px-6 py-10">
       {/* NAVBAR */}
       <header className="flex items-center justify-between">
         {/* Left Logo Ribbon */}
@@ -74,9 +75,11 @@ export default function Login() {
 
           {/* centered text */}
           <div className="absolute inset-0 flex items-center justify-center">
-            <span className="text-white font-semibold text-xl font-serif tracking-wide">
-              MannSathi
+            <Link to="/">
+            <span className="text-white font-semibold text-xl font-serif tracking-wide cursor-pointer">
+            MannSathi
             </span>
+            </Link>
           </div>
         </div>
 

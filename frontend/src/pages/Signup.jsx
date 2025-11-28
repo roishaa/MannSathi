@@ -1,4 +1,5 @@
 // src/Signup.jsx
+import { Link } from "react-router-dom";
 import { useState } from "react";
 
 const API_BASE = "http://127.0.0.1:8000"; // change later to env if you want
@@ -73,16 +74,21 @@ const res = await fetch(`${API_BASE}/api/register`, {
   };
 
   return (
-    <div className="min-h-screen bg-[#fffaf4] px-6 py-10">
+    <div className="min-h-screen bg-[#fffff] px-6 py-10">
       {/* NAVBAR */}
       <header className="flex items-center justify-between">
-        {/* Logo ribbon */}
+        {/* Left Logo Ribbon */}
         <div className="relative">
+          {/* green shape */}
           <div className="w-56 h-16 bg-[#215c4c] [clip-path:polygon(0_0,100%_0,100%_60%,50%_100%,0_60%)]" />
+
+          {/* centered text */}
           <div className="absolute inset-0 flex items-center justify-center">
-            <span className="text-white font-semibold text-xl font-serif tracking-wide">
-              MannSathi
+            <Link to="/">
+            <span className="text-white font-semibold text-xl font-serif tracking-wide cursor-pointer">
+            MannSathi
             </span>
+            </Link>
           </div>
         </div>
 
