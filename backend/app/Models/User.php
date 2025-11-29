@@ -30,4 +30,9 @@ class User extends Authenticatable
             'password' => 'hashed',
         ];
     }
+    public function counselor()
+{
+    return $this->hasOne(Counselor::class);
+}
+
 }

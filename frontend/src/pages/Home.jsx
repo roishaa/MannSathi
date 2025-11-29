@@ -1,3 +1,5 @@
+import { Link } from "react-router-dom";
+
 function Home() {
   return (
     <div className="min-h-screen bg-[#fffff] px-6 py-10">
@@ -28,6 +30,7 @@ function Home() {
           <div className="h-9 w-9 flex items-center justify-center rounded-full bg-white border shadow hover:shadow-md cursor-pointer">
             🔍
           </div>
+          
         </nav>
       </header>
 
@@ -92,12 +95,13 @@ function Home() {
   </button>
 
   {/* Login button – same style, slightly lighter */}
- <button
-  onClick={() => (window.location.href = "/login")}
-  className="inline-flex items-center rounded-full border border-[#89ad8f] bg-[#e3f3e6] px-8 py-3 text-[16px] font-semibold text-[#305b39] shadow-[0_4px_0_0_#89ad8f] hover:translate-y-[1px] hover:shadow-[0_3px_0_0_#89ad8f] transition"
->
-  Login
-</button>
+  <Link
+    to="/login"
+    className="inline-flex items-center rounded-full border border-[#89ad8f] bg-[#e3f3e6] px-8 py-3 text-[16px] font-semibold text-[#305b39] shadow-[0_4px_0_0_#89ad8f] hover:translate-y-[1px] hover:shadow-[0_3px_0_0_#89ad8f] transition"
+  >
+    Login
+  </Link>
+
 </div>
 
   </div>
@@ -107,11 +111,11 @@ function Home() {
   <div className="relative">
 
     {/* Outer white oval */}
-    <div className="h-72 w-80 rounded-[50%] bg-white flex items-center justify-center shadow-sm">
+    <div className="h-72 w-80 rounded-[50%] bg-white flex items-center justify-center shadow-sm animate-avatarFloat">
       
       {/* Inner peach oval */}
       <div className="h-64 w-72 rounded-[50%] bg-[#ffe1d6] flex items-center justify-center overflow-hidden">
-
+        
         {/* Avatar */}
         <img
           src="/src/assets/avatar1.jpg"
@@ -125,51 +129,44 @@ function Home() {
 </div>
 
 
+
 </section>
 
 
-<section className="mt-24">
-  <div className="overflow-x-auto scrollbar-hide pl-12"> 
-    {/* pl-12 → pushes the whole card row to the RIGHT */}
-    
-    <div className="flex gap-10 snap-x snap-mandatory">
+<section className="mt-24 px-6 flex justify-center">
+  <div className="max-w-4xl w-full rounded-3xl bg-[#fff7f3] px-8 md:px-14 py-12 shadow-[0_10px_40px_rgba(0,0,0,0.08)]">
 
-      {[1, 2, 3, 4].map((i) => (
-        <div
-          key={i}
-          className="snap-center min-w-[310px] bg-[#ffe5d6] rounded-xl border border-[#f3ccb3] shadow-lg"
-        >
+    {/* Heading */}
+    <h2 className="text-3xl md:text-4xl font-serif text-center text-[#292521]">
+      About MannSathi
+    </h2>
 
-          {/* Titles */}
-          <div className="flex justify-between items-start px-6 pt-6">
-            <div>
-              <p className="font-semibold text-lg text-neutral-900">
-                Anger Management
-              </p>
-              <p className="text-sm text-neutral-600 mt-1">
-                Improve communication
-              </p>
-            </div>
-
-            {/* Status indicator */}
-            <div className="h-7 w-7 flex items-center justify-center bg-white shadow rounded-full mt-1">
-              <div className="h-3.5 w-3.5 rounded-full bg-[#24c5a7]" />
-            </div>
-          </div>
-
-          {/* Image */}
-          <img
-            src="/src/assets/avatar2.jpg"
-            className="mt-5 w-full h-72 object-cover rounded-b-xl"
-            alt="therapy"
-          />
-
-        </div>
-      ))}
-
+    {/* Wavy line */}
+    <div className="flex justify-center mt-2">
+      <svg className="w-40" height="12" viewBox="0 0 200 12" fill="none">
+        <path 
+          d="M0 6 Q 25 0 50 6 T 100 6 T 150 6 T 200 6" 
+          stroke="#d2c3b4" 
+          strokeWidth="3" 
+          strokeLinecap="round"
+        />
+      </svg>
     </div>
+
+    {/* Paragraph */}
+    <p className="mt-6 text-center text-[#5f5b57] text-sm md:text-base leading-relaxed">
+      MannSathi is your safe, private, and judgment-free space to express how you feel.
+      We connect you with certified mental health counselors and provide gentle AI
+      support — helping you understand and navigate your emotions at your own pace.
+      <br /><br />
+      Whether you're dealing with stress, anxiety, overthinking, or feeling lost,
+      MannSathi is here to guide you with compassion, warmth, and understanding.
+    </p>
+
+
   </div>
 </section>
+
 {/* EMOTIONAL CHECK-IN SECTION */}
 <section className="mt-20 mb-24 flex flex-col items-center gap-10 px-4">
   {/* Top CTA bar */}
