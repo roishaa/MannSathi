@@ -18,6 +18,7 @@ export default function CounselorSignup() {
 
   const handleChange = (e) => {
     setForm({ ...form, [e.target.name]: e.target.value });
+    if (error) setError("");
   };
 
   const handleSubmit = async (e) => {
@@ -25,28 +26,57 @@ export default function CounselorSignup() {
     setError("");
     setLoading(true);
 
+    // prepare payload so we can handle numeric field
+    const payload = {
+      ...form,
+      experience_years:
+        form.experience_years === "" ? null : Number(form.experience_years),
+    };
+
     try {
       const res = await fetch("http://localhost:8000/api/register-counselor", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify(payload),
       });
 
+      const data = await res.json().catch(() => ({}));
+
       if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.message || "Signup failed");
+        // show first validation error if available
+        if (data.errors) {
+          const firstField = Object.keys(data.errors)[0];
+          setError(data.errors[firstField][0]);
+        } else if (data.message) {
+          setError(data.message);
+        } else {
+          setError("Signup failed. Please try again.");
+        }
+        return;
       }
 
-      const data = await res.json();
+      // ✅ success – no auto-login, just redirect to counselor login
+      alert("Counselor account created. Please log in.");
 
-      // Save token + user info (like user signup)
-      localStorage.setItem("token", data.token);
-      localStorage.setItem("user", JSON.stringify(data.user));
+      // optional: clear form
+      setForm({
+        name: "",
+        email: "",
+        password: "",
+        password_confirmation: "",
+        specialization: "",
+        license_no: "",
+        experience_years: "",
+        bio: "",
+      });
 
-      // Redirect to counselor dashboard (you will create later)
-      navigate("/counselor/dashboard");
+      navigate("/counselor/login");
     } catch (err) {
-      setError(err.message);
+      console.error(err);
+      setError("Something went wrong. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -59,7 +89,8 @@ export default function CounselorSignup() {
           Counselor Signup
         </h1>
         <p className="mt-2 text-sm text-center text-[#6b6762]">
-          Join MannSathi as a counselor and support people on their healing journey.
+          Join MannSathi as a counselor and support people on their healing
+          journey.
         </p>
 
         {error && (
@@ -143,7 +174,7 @@ export default function CounselorSignup() {
                 value={form.license_no}
                 onChange={handleChange}
                 className="w-full rounded-xl border border-[#e4d9cb] px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#9ed9b4]"
-              />
+            />
             </div>
             <div>
               <label className="block text-sm text-[#444] mb-1">

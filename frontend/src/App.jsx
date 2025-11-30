@@ -6,6 +6,7 @@ import Signup from "./pages/Signup";
 import Dashboard from "./pages/Dashboard";
 import CounselorSignup from "./pages/CounselorSignup";
 import CounselorLogin from "./pages/CounselorLogin";
+import BookAppointment from "./pages/BookAppointment";
 
 
 function App() {
@@ -19,6 +20,8 @@ function App() {
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/counselor/signup" element={<CounselorSignup />} />
         <Route path="/counselor/login" element={<CounselorLogin />} />
+        <Route path="/BookAppointment" element={<BookAppointment />} />
+        
         
       </Routes>
     </BrowserRouter>

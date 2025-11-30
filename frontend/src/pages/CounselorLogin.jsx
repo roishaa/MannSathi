@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 
 export default function CounselorLogin() {
   const navigate = useNavigate();
@@ -92,6 +92,17 @@ export default function CounselorLogin() {
             {loading ? "Logging in..." : "Login as Counselor"}
           </button>
         </form>
+
+        {/* NEW: Counselor Signup Link */}
+        <p className="mt-5 text-sm text-center text-[#6b6762]">
+          Don&apos;t have a counselor account?{" "}
+          <Link
+            to="/counselor/signup"
+            className="text-[#215c4c] font-semibold hover:underline"
+          >
+            Sign up as Counselor
+          </Link>
+        </p>
       </div>
     </div>
   );
