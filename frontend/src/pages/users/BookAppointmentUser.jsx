@@ -1,7 +1,7 @@
 import { useState, useMemo } from "react";
 import { Link } from "react-router-dom";
 
-export default function BookAppointment() {
+export default function BookAppointmentUser() {
   const [step, setStep] = useState(1);
 
   const [formData, setFormData] = useState({

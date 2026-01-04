@@ -4,6 +4,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\CounselorAuthController;
+use App\Http\Controllers\MoodController;
 
 Route::get('/health', function () {
     return response()->json(['status' => 'ok']);
@@ -19,4 +20,7 @@ Route::middleware('auth:sanctum')->group(function () {
     });
 
     Route::post('/logout', [AuthController::class, 'logout']);
+    Route::post('/mood', [MoodController::class, 'store']);
+    Route::get('/mood/weekly', [MoodController::class, 'weekly']);
+    Route::get('/mood/last-week', [MoodController::class, 'lastWeek']);
 });

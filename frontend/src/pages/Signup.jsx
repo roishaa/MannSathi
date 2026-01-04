@@ -2,7 +2,7 @@
 import { Link } from "react-router-dom";
 import { useState } from "react";
 
-const API_BASE = "http://127.0.0.1:8000"; // change later to env if you want
+const API_BASE = "http://127.0.0.1:8000";
 
 export default function Signup() {
   const [form, setForm] = useState({
@@ -15,39 +15,33 @@ export default function Signup() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  // update form when typing
   const handleChange = (e) => {
-    setForm({
-      ...form,
-      [e.target.name]: e.target.value,
-    });
-    // clear error when user starts typing again
+    setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
     if (error) setError("");
   };
 
-  // submit form
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
     setLoading(true);
 
     try {
-const res = await fetch(`${API_BASE}/api/register`, {
-  method: "POST",
-  headers: {
-    "Content-Type": "application/json",
-    Accept: "application/json",
-  },
-  body: JSON.stringify(form),
-});
+      const res = await fetch(`${API_BASE}/api/register`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify(form),
+      });
 
       const data = await res.json();
 
       if (!res.ok) {
-        // handle Laravel validation / error messages
         if (res.status === 419) {
-          // 419 = CSRF in Laravel (should not happen for /api routes)
-          setError("Server reported a CSRF error. Check that /api/register is in routes/api.php.");
+          setError(
+            "Server reported a CSRF error. Check that /api/register is in routes/api.php."
+          );
         } else if (data.errors) {
           const firstField = Object.keys(data.errors)[0];
           setError(data.errors[firstField][0]);
@@ -59,7 +53,6 @@ const res = await fetch(`${API_BASE}/api/register`, {
         return;
       }
 
-      // save token & user if you want auto-login
       localStorage.setItem("authToken", data.token);
       localStorage.setItem("user", JSON.stringify(data.user));
 
@@ -74,132 +67,158 @@ const res = await fetch(`${API_BASE}/api/register`, {
   };
 
   return (
-    <div className="min-h-screen bg-[#fffff] px-6 py-10">
-      {/* NAVBAR */}
-      <header className="flex items-center justify-between">
-        {/* Left Logo Ribbon */}
-        <div className="relative">
-          {/* green shape */}
-          <div className="w-56 h-16 bg-[#215c4c] [clip-path:polygon(0_0,100%_0,100%_60%,50%_100%,0_60%)]" />
+    <div className="min-h-screen bg-white px-6 pt-28 pb-10">
+      {/* NAVBAR (FIXED) */}
+      <header className="fixed top-0 left-0 w-full z-50 bg-white/95 backdrop-blur border-b border-[#f0f0f0]">
+        <div className="mx-auto max-w-6xl flex items-center justify-between px-6 py-4">
+          {/* Logo Ribbon */}
+          <Link to="/" className="relative block select-none">
+            <div className="w-56 h-16 bg-[#215c4c] [clip-path:polygon(0_0,100%_0,100%_60%,50%_100%,0_60%)]" />
+            <div className="absolute inset-0 flex items-center justify-center">
+              <span className="text-white font-semibold text-xl font-serif tracking-wide">
+                MannSathi
+              </span>
+            </div>
+          </Link>
 
-          {/* centered text */}
-          <div className="absolute inset-0 flex items-center justify-center">
-            <Link to="/">
-            <span className="text-white font-semibold text-xl font-serif tracking-wide cursor-pointer">
-            MannSathi
-            </span>
+          {/* Nav */}
+          <nav className="flex items-center gap-8 text-[15px] font-medium text-neutral-800">
+            <Link to="/" className="hover:text-[#215c4c] transition">
+              Home
             </Link>
-          </div>
-        </div>
+            <Link to="/about" className="hover:text-[#215c4c] transition">
+              About Us
+            </Link>
+            <Link to="/services" className="hover:text-[#215c4c] transition">
+              Services
+            </Link>
 
-        {/* NAV LINKS */}
-        <nav className="flex items-center gap-10 text-[15px] font-medium text-neutral-800">
-          <a className="hover:text-[#215c4c] cursor-pointer">Home</a>
-          <a className="hover:text-[#215c4c] cursor-pointer">About Us</a>
-          <a className="hover:text-[#215c4c] cursor-pointer">Services</a>
-
-          <button
-            className="inline-flex items-center rounded-full border border-[#89ad8f] bg-[#e3f3e6] px-8 py-3 text-[16px] font-semibold text-[#305b39] shadow-[0_4px_0_0_#89ad8f] hover:translate-y-[1px] hover:shadow-[0_3px_0_0_#89ad8f] transition"
-            onClick={() => (window.location.href = "/login")}
-          >
-            Login
-          </button>
-        </nav>
-      </header>
-
-      {/* content */}
-      <main className="flex-1 w-full flex justify-center items-center px-4 pb-16">
-        <div className="w-full max-w-md bg-white rounded-3xl shadow-[0_20px_40px_rgba(0,0,0,0.06)] px-8 py-10">
-          <h1 className="text-2xl font-semibold text-neutral-900 mb-2">
-            Create your account 🌿
-          </h1>
-          <p className="text-sm text-neutral-600 mb-4">
-            Join MannSathi and connect with verified counselors.
-          </p>
-
-          {/* error message */}
-          {error && (
-            <p className="mb-4 text-xs text-red-500 bg-red-50 border border-red-100 rounded-lg px-3 py-2">
-              {error}
-            </p>
-          )}
-
-          <form className="space-y-5" onSubmit={handleSubmit}>
-            <div>
-              <label className="block text-sm font-medium text-neutral-800 mb-1">
-                Full Name
-              </label>
-              <input
-                type="text"
-                name="name"
-                value={form.name}
-                onChange={handleChange}
-                className="w-full rounded-xl border border-[#e3ded0] bg-[#fffdf7] px-3 py-2.5 text-sm outline-none focus:border-[#89ad8f] focus:ring-2 focus:ring-[#c9e2cf]"
-                placeholder="Your name"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-neutral-800 mb-1">
-                Email
-              </label>
-              <input
-                type="email"
-                name="email"
-                value={form.email}
-                onChange={handleChange}
-                className="w-full rounded-xl border border-[#e3ded0] bg-[#fffdf7] px-3 py-2.5 text-sm outline-none focus:border-[#89ad8f] focus:ring-2 focus:ring-[#c9e2cf]"
-                placeholder="you@example.com"
-              />
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-neutral-800 mb-1">
-                  Password
-                </label>
-                <input
-                  type="password"
-                  name="password"
-                  value={form.password}
-                  onChange={handleChange}
-                  className="w-full rounded-xl border border-[#e3ded0] bg-[#fffdf7] px-3 py-2.5 text-sm outline-none focus:border-[#89ad8f] focus:ring-2 focus:ring-[#c9e2cf]"
-                  placeholder="••••••••"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-neutral-800 mb-1">
-                  Confirm Password
-                </label>
-                <input
-                  type="password"
-                  name="password_confirmation"
-                  value={form.password_confirmation}
-                  onChange={handleChange}
-                  className="w-full rounded-xl border border-[#e3ded0] bg-[#fffdf7] px-3 py-2.5 text-sm outline-none focus:border-[#89ad8f] focus:ring-2 focus:ring-[#c9e2cf]"
-                  placeholder="••••••••"
-                />
-              </div>
-            </div>
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="mt-2 w-full inline-flex justify-center rounded-full border border-[#89ad8f] bg-[#e3f3e6] px-5 py-3 text-sm font-semibold text-[#305b39] shadow-[0_4px_0_0_#89ad8f] hover:translate-y-[1px] hover:shadow-[0_3px_0_0_#89ad8f] transition disabled:opacity-70 disabled:cursor-not-allowed"
-            >
-              {loading ? "Creating account..." : "Sign Up"}
-            </button>
-          </form>
-
-          <p className="mt-5 text-xs text-neutral-600 text-center">
-            Already have an account?{" "}
-            <span
-              className="text-[#305b39] font-semibold hover:underline cursor-pointer"
-              onClick={() => (window.location.href = "/login")}
+            <Link
+              to="/login"
+              className="inline-flex items-center rounded-full border border-[#89ad8f] bg-[#e3f3e6]
+                         px-7 py-2.5 text-[15px] font-semibold text-[#305b39]
+                         shadow-[0_4px_0_0_#89ad8f] hover:translate-y-[1px]
+                         hover:shadow-[0_3px_0_0_#89ad8f] transition"
             >
               Login
-            </span>
-          </p>
+            </Link>
+          </nav>
+        </div>
+      </header>
+
+      {/* CONTENT */}
+      <main className="mx-auto max-w-6xl mt-10 md:mt-14 px-2 pb-16">
+        <div className="relative flex justify-center">
+          {/* soft background glow */}
+          <div className="absolute -top-10 h-72 w-72 rounded-full bg-[#e3f3e6]/55 blur-3xl" />
+          <div className="absolute top-24 -right-10 h-64 w-64 rounded-full bg-[#ffe1d6]/45 blur-3xl hidden md:block" />
+
+          <div className="relative w-full max-w-md">
+            <div className="bg-white rounded-3xl border border-[#efe7dc] shadow-[0_20px_60px_rgba(0,0,0,0.08)] px-8 py-10">
+              <h1 className="text-2xl font-semibold text-neutral-900 mb-2">
+                Create your account 🌿
+              </h1>
+              <p className="text-sm text-neutral-600 mb-6">
+                Join MannSathi and connect with verified counselors.
+              </p>
+
+              {error && (
+                <div className="mb-5 rounded-2xl border border-red-100 bg-red-50 px-4 py-3">
+                  <p className="text-sm text-red-600">{error}</p>
+                </div>
+              )}
+
+              <form className="space-y-5" onSubmit={handleSubmit}>
+                <div>
+                  <label className="block text-sm font-medium text-neutral-800 mb-2">
+                    Full Name
+                  </label>
+                  <input
+                    type="text"
+                    name="name"
+                    value={form.name}
+                    onChange={handleChange}
+                    placeholder="Your name"
+                    className="w-full rounded-2xl border border-[#e3ded0] bg-[#fffdf7]
+                               px-4 py-3 text-sm outline-none
+                               focus:border-[#89ad8f] focus:ring-2 focus:ring-[#c9e2cf]"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-neutral-800 mb-2">
+                    Email
+                  </label>
+                  <input
+                    type="email"
+                    name="email"
+                    value={form.email}
+                    onChange={handleChange}
+                    placeholder="you@example.com"
+                    className="w-full rounded-2xl border border-[#e3ded0] bg-[#fffdf7]
+                               px-4 py-3 text-sm outline-none
+                               focus:border-[#89ad8f] focus:ring-2 focus:ring-[#c9e2cf]"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-neutral-800 mb-2">
+                      Password
+                    </label>
+                    <input
+                      type="password"
+                      name="password"
+                      value={form.password}
+                      onChange={handleChange}
+                      placeholder="••••••••"
+                      className="w-full rounded-2xl border border-[#e3ded0] bg-[#fffdf7]
+                                 px-4 py-3 text-sm outline-none
+                                 focus:border-[#89ad8f] focus:ring-2 focus:ring-[#c9e2cf]"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-neutral-800 mb-2">
+                      Confirm Password
+                    </label>
+                    <input
+                      type="password"
+                      name="password_confirmation"
+                      value={form.password_confirmation}
+                      onChange={handleChange}
+                      placeholder="••••••••"
+                      className="w-full rounded-2xl border border-[#e3ded0] bg-[#fffdf7]
+                                 px-4 py-3 text-sm outline-none
+                                 focus:border-[#89ad8f] focus:ring-2 focus:ring-[#c9e2cf]"
+                    />
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full inline-flex justify-center rounded-full border border-[#89ad8f] bg-[#e3f3e6]
+                             px-5 py-3 text-sm font-semibold text-[#305b39]
+                             shadow-[0_4px_0_0_#89ad8f]
+                             hover:translate-y-[1px] hover:shadow-[0_3px_0_0_#89ad8f] transition
+                             disabled:opacity-70 disabled:cursor-not-allowed"
+                >
+                  {loading ? "Creating account..." : "Sign Up"}
+                </button>
+              </form>
+
+              <p className="mt-6 text-sm text-neutral-600 text-center">
+                Already have an account?{" "}
+                <Link
+                  to="/login"
+                  className="text-[#305b39] font-semibold hover:underline"
+                >
+                  Login
+                </Link>
+              </p>
+            </div>
+          </div>
         </div>
       </main>
     </div>
