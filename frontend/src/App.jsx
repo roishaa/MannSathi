@@ -1,17 +1,17 @@
 // src/App.jsx
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 
-// Public pages
+// ================= PUBLIC PAGES =================
 import Home from "./pages/Home";
 import Login from "./pages/Login";
 import Signup from "./pages/Signup";
 import BookAppointment from "./pages/BookAppointment";
 
-// Counselor pages
+// ================= COUNSELOR PAGES =================
 import CounselorSignup from "./pages/counselor/CounselorSignup";
 import CounselorLogin from "./pages/counselor/CounselorLogin";
 
-// User pages
+// ================= USER PAGES =================
 import MoodCheckIn from "./pages/users/MoodCheckIn";
 import UserDashboard from "./pages/users/UserDashboard";
 import BookAppointmentUser from "./pages/users/BookAppointmentUser";
@@ -21,7 +21,7 @@ import UserSettings from "./pages/users/Settings";
 import Chat from "./pages/users/Chat";
 import SearchDoctor from "./pages/SearchDoctor";
 
-// Topic pages
+// ================= TOPIC PAGES =================
 import Anxiety from "./pages/topics/Anxiety";
 import Stress from "./pages/topics/Stress";
 import Psychotic from "./pages/topics/Psychotic";
@@ -29,18 +29,20 @@ import Depression from "./pages/topics/Depression";
 import Relationships from "./pages/topics/Relationships";
 import OCD from "./pages/topics/OCD";
 
-// Admin pages
-import AdminLogin from "./pages/admin/AdminLogin";
-import AdminDashboard from "./pages/admin/AdminDashboard";
+// ================= PLATFORM ADMIN (MANNSATHI) =================
+import PlatformLogin from "./pages/platform/PlatformLogin";
+import PlatformDashboard from "./pages/platform/PlatformDashboard";
+import PlatformAdminRoute from "./routes/PlatformAdminRoute";
 
-// Admin route protection
-import AdminProtectedRoute from "./routes/AdminProtectedRoute";
+// ================= HOSPITAL ADMIN =================
+import HospitalAdminLogin from "./pages/hospitalAdmin/HospitalAdminLogin";
+import HospitalAdminDashboard from "./pages/hospitalAdmin/HospitalAdminDashboard";
+import HospitalAdminRoute from "./routes/HospitalAdminRoute";
 
 function App() {
   return (
     <BrowserRouter>
       <Routes>
-
         {/* ================= PUBLIC ROUTES ================= */}
         <Route path="/" element={<Home />} />
         <Route path="/login" element={<Login />} />
@@ -54,7 +56,10 @@ function App() {
         {/* ================= USER ROUTES ================= */}
         <Route path="/users/mood-check" element={<MoodCheckIn />} />
         <Route path="/users/dashboard" element={<UserDashboard />} />
-        <Route path="/users/BookAppointmentUser" element={<BookAppointmentUser />} />
+        <Route
+          path="/users/BookAppointmentUser"
+          element={<BookAppointmentUser />}
+        />
         <Route path="/sessions" element={<Sessions />} />
         <Route path="/payments" element={<Payments />} />
         <Route path="/settings" element={<UserSettings />} />
@@ -69,13 +74,20 @@ function App() {
         <Route path="/topics/relationships" element={<Relationships />} />
         <Route path="/topics/ocd" element={<OCD />} />
 
-        {/* ================= ADMIN ROUTES ================= */}
-        <Route path="/admin/login" element={<AdminLogin />} />
-
-        <Route element={<AdminProtectedRoute />}>
-          <Route path="/admin/dashboard" element={<AdminDashboard />} />
+        {/* ================= PLATFORM ADMIN (MANNSATHI OWNER) ================= */}
+        <Route path="/platform/login" element={<PlatformLogin />} />
+        <Route element={<PlatformAdminRoute />}>
+          <Route path="/platform/dashboard" element={<PlatformDashboard />} />
         </Route>
 
+        {/* ================= HOSPITAL ADMIN (ONE HOSPITAL) ================= */}
+        <Route path="/hospital-admin/login" element={<HospitalAdminLogin />} />
+        <Route element={<HospitalAdminRoute />}>
+          <Route
+            path="/hospital-admin/dashboard"
+            element={<HospitalAdminDashboard />}
+          />
+        </Route>
       </Routes>
     </BrowserRouter>
   );

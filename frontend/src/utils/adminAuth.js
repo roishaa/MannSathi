@@ -1,22 +1,35 @@
-// src/utils/adminAuth.js
+export const ADMIN_SESSION_KEY = "admin_session";
 
-export const ADMIN_KEY = "admin_auth";
+/**
+ * session shape:
+ * {
+ *   role: "platform_admin" | "hospital_admin",
+ *   name: string,
+ *   email: string,
+ *   hospitalId?: string,
+ *   hospitalName?: string,
+ *   loggedInAt?: string
+ * }
+ */
 
-export function isAdminLoggedIn() {
+export function getAdminSession() {
   try {
-    const raw = localStorage.getItem(ADMIN_KEY);
-    if (!raw) return false;
-    const data = JSON.parse(raw);
-    return data?.role === "admin";
+    const raw = localStorage.getItem(ADMIN_SESSION_KEY);
+    return raw ? JSON.parse(raw) : null;
   } catch {
-    return false;
+    return null;
   }
 }
 
-export function setAdminSession(adminObj) {
-  localStorage.setItem(ADMIN_KEY, JSON.stringify(adminObj));
+export function setAdminSession(session) {
+  localStorage.setItem(ADMIN_SESSION_KEY, JSON.stringify(session));
 }
 
 export function clearAdminSession() {
-  localStorage.removeItem(ADMIN_KEY);
+  localStorage.removeItem(ADMIN_SESSION_KEY);
+}
+
+export function isRole(role) {
+  const s = getAdminSession();
+  return s?.role === role;
 }
