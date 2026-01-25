@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\User;
 use App\Models\Counselor;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -11,46 +10,93 @@ class CounselorAuthController extends Controller
 {
     public function register(Request $request)
     {
-        // 1) validate data coming from React
-        $validated = $request->validate([
-            'name'             => ['required', 'string', 'max:255'],
-            'email'            => ['required', 'email', 'max:255', 'unique:users,email'],
-            'password'         => ['required', 'string', 'min:8', 'confirmed'],
-            'specialization'   => ['nullable', 'string', 'max:255'],
-            'license_no'       => ['nullable', 'string', 'max:255'],
-            'experience_years' => ['nullable', 'integer', 'min:0'],
-            'bio'              => ['nullable', 'string'],
+        $request->validate([
+            'name' => ['required','string','max:100'],
+            'email' => ['required','email','unique:counselors,email'],
+            'password' => ['required','string','min:6','confirmed'],
+
+            'specialization' => ['required','string','max:100'],
+            'license_no' => ['required','string','max:100'],
+            'experience_years' => ['nullable','integer','min:0'],
+            'bio' => ['nullable','string'],
+
+            'license_document' => ['required','file','mimes:pdf,jpg,jpeg,png','max:2048'],
+            'degree_document' => ['required','file','mimes:pdf,jpg,jpeg,png','max:2048'],
+            'id_document' => ['nullable','file','mimes:pdf,jpg,jpeg,png','max:2048'],
+
+            'consent' => ['nullable'], // from frontend checkbox (not stored)
         ]);
 
-        // 2) create user with role 'counselor'
-        $user = User::create([
-            'name'     => $validated['name'],
-            'email'    => $validated['email'],
-            'password' => Hash::make($validated['password']),
-            'role'     => 'counselor',
+        // Store files in /storage/app/public/...
+        $licensePath = $request->file('license_document')->store('counselors/licenses', 'public');
+        $degreePath  = $request->file('degree_document')->store('counselors/degrees', 'public');
+        $idPath      = $request->file('id_document')
+            ? $request->file('id_document')->store('counselors/ids', 'public')
+            : null;
+
+        $counselor = Counselor::create([
+            'name' => $request->name,
+            'email' => $request->email,
+            'password' => Hash::make($request->password),
+
+            'specialization' => $request->specialization,
+            'license_no' => $request->license_no,
+            'experience_years' => $request->experience_years,
+            'bio' => $request->bio,
+
+            // NOTE: your model uses *_path names
+            'license_document_path' => $licensePath,
+            'degree_document_path' => $degreePath,
+            'id_document_path' => $idPath,
+
+            // match DB enum casing
+            'status' => 'PENDING',
         ]);
 
-        // 3) create counselor profile row
-        Counselor::create([
-            'user_id'          => $user->id,
-            'specialization'   => $validated['specialization'] ?? null,
-            'license_no'       => $validated['license_no'] ?? null,
-            'experience_years' => $validated['experience_years'] ?? null,
-            'bio'              => $validated['bio'] ?? null,
-            'is_verified'      => false,
+        return response()->json([
+            'message' => 'Counselor registered. Pending verification.',
+            'counselor' => [
+                'id' => $counselor->id,
+                'name' => $counselor->name,
+                'email' => $counselor->email,
+                'status' => $counselor->status,
+                'hospital_id' => $counselor->hospital_id,
+            ],
+        ], 201);
+    }
+
+    public function login(Request $request)
+    {
+        $request->validate([
+            'email' => ['required','email'],
+            'password' => ['required','string'],
         ]);
 
-        // 4) if you use Sanctum / tokens, generate token
-        $token = $user->createToken('auth')->plainTextToken;
+        $counselor = Counselor::where('email', $request->email)->first();
+
+        if (!$counselor || !Hash::check($request->password, $counselor->password)) {
+            return response()->json(['message' => 'Invalid credentials'], 401);
+        }
+
+        // Optional: block unapproved counselors (DB stores uppercase)
+        if (($counselor->status ?? 'PENDING') !== 'APPROVED') {
+            return response()->json([
+                'message' => 'Your account is pending verification by the hospital.'
+            ], 403);
+        }
+
+        $token = $counselor->createToken('counselor_token')->plainTextToken;
 
         return response()->json([
             'token' => $token,
-            'user'  => [
-                'id'    => $user->id,
-                'name'  => $user->name,
-                'email' => $user->email,
-                'role'  => $user->role,   // <--- important
+            'role' => 'counselor',
+            'counselor' => [
+                'id' => $counselor->id,
+                'name' => $counselor->name,
+                'email' => $counselor->email,
+                'hospital_id' => $counselor->hospital_id,
+                'status' => $counselor->status,
             ],
-        ], 201);
+        ]);
     }
 }

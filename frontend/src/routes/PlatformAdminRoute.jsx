@@ -1,7 +1,9 @@
 import { Navigate, Outlet } from "react-router-dom";
-import { isRole } from "../utils/adminAuth";
+import { getAuthRole, isLoggedIn } from "../utils/adminAuth";
 
 export default function PlatformAdminRoute() {
-  if (!isRole("platform_admin")) return <Navigate to="/platform/login" replace />;
+  if (!isLoggedIn()) return <Navigate to="/admin/login" replace />;
+  if (getAuthRole() !== "platform_admin")
+    return <Navigate to="/unauthorized" replace />;
   return <Outlet />;
 }

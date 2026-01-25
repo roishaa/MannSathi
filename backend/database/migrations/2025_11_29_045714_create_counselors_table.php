@@ -6,26 +6,33 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    public function up(): void
-    {
-        Schema::create('counselors', function (Blueprint $table) {
-            $table->id();
-            $table->unsignedBigInteger('user_id');
-            $table->string('specialization')->nullable();
-            $table->string('license_no')->nullable();
-            $table->integer('experience_years')->nullable();
-            $table->text('bio')->nullable();
-            $table->boolean('is_verified')->default(false);
-            $table->timestamps();
+    public function up(): void {
+    Schema::create('counselors', function (Blueprint $table) {
+      $table->id();
+      $table->string('name');
+      $table->string('email')->unique();
+      $table->string('password'); // hashed
 
-            $table->foreign('user_id')
-                  ->references('id')->on('users')
-                  ->onDelete('cascade');
-        });
-    }
+      $table->string('specialization')->nullable();
+      $table->string('license_no')->nullable();
+      $table->integer('experience_years')->default(0);
+      $table->text('bio')->nullable();
 
-    public function down(): void
-    {
-        Schema::dropIfExists('counselors');
-    }
+      // store uploaded file paths
+      $table->string('license_document_path')->nullable();
+      $table->string('degree_document_path')->nullable();
+      $table->string('id_document_path')->nullable();
+
+      // approval workflow
+      $table->enum('status', ['PENDING', 'APPROVED', 'REJECTED'])->default('PENDING');
+
+      // one hospital only
+      $table->string('hospital_id')->default('hosp_001');
+
+      $table->timestamps();
+    });
+  }
+  public function down(): void {
+    Schema::dropIfExists('counselors');
+  }
 };

@@ -10,6 +10,7 @@ import BookAppointment from "./pages/BookAppointment";
 // ================= COUNSELOR PAGES =================
 import CounselorSignup from "./pages/counselor/CounselorSignup";
 import CounselorLogin from "./pages/counselor/CounselorLogin";
+import CounselorDashboard from "./pages/counselor/CounselorDashboard";
 
 // ================= USER PAGES =================
 import MoodCheckIn from "./pages/users/MoodCheckIn";
@@ -29,15 +30,29 @@ import Depression from "./pages/topics/Depression";
 import Relationships from "./pages/topics/Relationships";
 import OCD from "./pages/topics/OCD";
 
-// ================= PLATFORM ADMIN (MANNSATHI) =================
-import PlatformLogin from "./pages/platform/PlatformLogin";
-import PlatformDashboard from "./pages/platform/PlatformDashboard";
+// ================= ADMIN LOGIN (ONE PAGE FOR BOTH) =================
+import AdminLogin from "./pages/admin/AdminLogin";
+
+// ================= PLATFORM ADMIN =================
+import PlatformAdminDashboard from "./pages/platform/PlatformAdminDashboard";
 import PlatformAdminRoute from "./routes/PlatformAdminRoute";
 
 // ================= HOSPITAL ADMIN =================
-import HospitalAdminLogin from "./pages/hospitalAdmin/HospitalAdminLogin";
 import HospitalAdminDashboard from "./pages/hospitalAdmin/HospitalAdminDashboard";
 import HospitalAdminRoute from "./routes/HospitalAdminRoute";
+import CounselorApproval from "./pages/hospitalAdmin/CounselorApproval";
+
+// Optional: Unauthorized page (recommended)
+function Unauthorized() {
+  return (
+    <div className="min-h-screen flex items-center justify-center px-4">
+      <div className="bg-white p-6 rounded-2xl shadow max-w-md w-full text-center">
+        <h1 className="text-xl font-bold">Unauthorized</h1>
+        <p className="text-gray-600 mt-2">You don&apos;t have access to this page.</p>
+      </div>
+    </div>
+  );
+}
 
 function App() {
   return (
@@ -47,19 +62,17 @@ function App() {
         <Route path="/" element={<Home />} />
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<Signup />} />
+        <Route path="/BookAppointment" element={<BookAppointment />} />
 
+        {/* ================= COUNSELOR ROUTES ================= */}
         <Route path="/counselor/signup" element={<CounselorSignup />} />
         <Route path="/counselor/login" element={<CounselorLogin />} />
-
-        <Route path="/BookAppointment" element={<BookAppointment />} />
+        <Route path="/counselor/dashboard" element={<CounselorDashboard />} />
 
         {/* ================= USER ROUTES ================= */}
         <Route path="/users/mood-check" element={<MoodCheckIn />} />
         <Route path="/users/dashboard" element={<UserDashboard />} />
-        <Route
-          path="/users/BookAppointmentUser"
-          element={<BookAppointmentUser />}
-        />
+        <Route path="/users/BookAppointmentUser" element={<BookAppointmentUser />} />
         <Route path="/sessions" element={<Sessions />} />
         <Route path="/payments" element={<Payments />} />
         <Route path="/settings" element={<UserSettings />} />
@@ -74,19 +87,19 @@ function App() {
         <Route path="/topics/relationships" element={<Relationships />} />
         <Route path="/topics/ocd" element={<OCD />} />
 
-        {/* ================= PLATFORM ADMIN (MANNSATHI OWNER) ================= */}
-        <Route path="/platform/login" element={<PlatformLogin />} />
+        {/* ================= ADMIN (ONE LOGIN) ================= */}
+        <Route path="/admin/login" element={<AdminLogin />} />
+        <Route path="/unauthorized" element={<Unauthorized />} />
+
+        {/* ================= PLATFORM ADMIN (PROTECTED) ================= */}
         <Route element={<PlatformAdminRoute />}>
-          <Route path="/platform/dashboard" element={<PlatformDashboard />} />
+          <Route path="/platform-admin/dashboard" element={<PlatformAdminDashboard />} />
         </Route>
 
-        {/* ================= HOSPITAL ADMIN (ONE HOSPITAL) ================= */}
-        <Route path="/hospital-admin/login" element={<HospitalAdminLogin />} />
+        {/* ================= HOSPITAL ADMIN (PROTECTED) ================= */}
         <Route element={<HospitalAdminRoute />}>
-          <Route
-            path="/hospital-admin/dashboard"
-            element={<HospitalAdminDashboard />}
-          />
+          <Route path="/hospital-admin/dashboard" element={<HospitalAdminDashboard />} />
+          <Route path="/hospital-admin/counselors" element={<CounselorApproval />} />
         </Route>
       </Routes>
     </BrowserRouter>

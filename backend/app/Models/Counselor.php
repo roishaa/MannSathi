@@ -2,26 +2,17 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Factories\HasFactory;
-use Illuminate\Database\Eloquent\Model;
+use Illuminate\Foundation\Auth\User as Authenticatable;
+use Laravel\Sanctum\HasApiTokens;
 
-class Counselor extends Model
-{
-    use HasFactory;
+class Counselor extends Authenticatable {
+  use HasApiTokens;
 
-    protected $fillable = [
-        'user_id',
-        'specialization',
-        'license_no',
-        'experience_years',
-        'bio',
-        'is_verified',
-    ];
+  protected $fillable = [
+    'name','email','password','specialization','license_no','experience_years','bio',
+    'license_document_path','degree_document_path','id_document_path','status','hospital_id'
+  ];
 
-    public function user()
-    {
-        return $this->belongsTo(User::class);
-    }
-    
+  protected $hidden = ['password'];
 }
 

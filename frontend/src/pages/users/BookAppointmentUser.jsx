@@ -106,7 +106,7 @@ export default function BookAppointmentUser() {
       {/* FIXED HEADER */}
       <header className="fixed top-0 left-0 w-full z-50 bg-white/95 backdrop-blur border-b border-[#f0f0f0]">
         <div className="mx-auto max-w-6xl flex items-center justify-between px-6 py-4">
-          <Link to="/" className="relative block select-none">
+          <Link to="/users/dashboard" className="relative block select-none">
             <div className="w-56 h-16 bg-[#215c4c] [clip-path:polygon(0_0,100%_0,100%_60%,50%_100%,0_60%)]" />
             <div className="absolute inset-0 flex items-center justify-center">
               <span className="text-white font-semibold text-xl font-serif tracking-wide">
@@ -114,22 +114,6 @@ export default function BookAppointmentUser() {
               </span>
             </div>
           </Link>
-
-          <nav className="flex items-center gap-8 text-[15px] font-medium text-neutral-800">
-            <Link to="/" className="hover:text-[#215c4c] transition">Home</Link>
-            <Link to="/about" className="hover:text-[#215c4c] transition">About Us</Link>
-            <Link to="/services" className="hover:text-[#215c4c] transition">Services</Link>
-
-            <Link
-              to="/signup"
-              className="inline-flex items-center rounded-full border border-[#89ad8f] bg-[#e3f3e6]
-                         px-7 py-2.5 text-[15px] font-semibold text-[#305b39]
-                         shadow-[0_4px_0_0_#89ad8f] hover:translate-y-[1px]
-                         hover:shadow-[0_3px_0_0_#89ad8f] transition"
-            >
-              Signup
-            </Link>
-          </nav>
         </div>
       </header>
 

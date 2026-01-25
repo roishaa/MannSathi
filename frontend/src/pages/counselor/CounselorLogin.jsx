@@ -18,7 +18,7 @@ export default function CounselorLogin() {
     setLoading(true);
 
     try {
-      const res = await fetch("http://localhost:8000/api/login", {
+      const res = await fetch("http://localhost:8000/api/counselor/login", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -34,12 +34,13 @@ export default function CounselorLogin() {
         throw new Error(data.message || "Login failed");
       }
 
-      if (data?.user?.role !== "counselor") {
-        throw new Error("This account is not a counselor account.");
+      // Backend returns 'counselor', not 'user'
+      if (!data?.counselor) {
+        throw new Error("Invalid response from server.");
       }
 
-      localStorage.setItem("token", data.token);
-      localStorage.setItem("user", JSON.stringify(data.user));
+      localStorage.setItem("auth_token", data.token);
+      localStorage.setItem("user", JSON.stringify({ ...data.counselor, role: data.role }));
 
       navigate("/counselor/dashboard");
     } catch (err) {

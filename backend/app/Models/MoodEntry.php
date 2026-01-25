@@ -1,11 +1,15 @@
 <?php
 
-namespace App\Http\Controllers;
+namespace App\Models;
 
 use Illuminate\Http\Request;
 use App\Models\MoodEntry;
 use Carbon\Carbon;
 
+class MoodEntry extends Model
+{
+    protected $fillable = ['user_id', 'mood', 'note'];
+}
 class MoodController extends Controller
 {
     public function store(Request $request)

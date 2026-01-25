@@ -21,7 +21,7 @@ export default function SearchDoctor() {
   return (
     <div className="min-h-screen bg-[#f8f6f0] px-5 md:px-10 py-8">
       <div className="flex items-center justify-between mb-6">
-        <Link to="/dashboard" className="text-sm underline text-[#1f4e43]">
+        <Link to="/users/dashboard" className="text-sm underline text-[#1f4e43]">
           ← Back to Dashboard
         </Link>
 

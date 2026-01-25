@@ -53,7 +53,7 @@ export default function Signup() {
         return;
       }
 
-      localStorage.setItem("authToken", data.token);
+      localStorage.setItem("auth_token", data.token);
       localStorage.setItem("user", JSON.stringify(data.user));
 
       alert("Account created successfully! You can now log in.");

@@ -1,35 +1,19 @@
-export const ADMIN_SESSION_KEY = "admin_session";
+export const getAuthToken = () => localStorage.getItem("auth_token");
 
-/**
- * session shape:
- * {
- *   role: "platform_admin" | "hospital_admin",
- *   name: string,
- *   email: string,
- *   hospitalId?: string,
- *   hospitalName?: string,
- *   loggedInAt?: string
- * }
- */
+export const getAuthRole = () => localStorage.getItem("auth_role");
 
-export function getAdminSession() {
+export const getAdminInfo = () => {
   try {
-    const raw = localStorage.getItem(ADMIN_SESSION_KEY);
-    return raw ? JSON.parse(raw) : null;
+    return JSON.parse(localStorage.getItem("admin_info"));
   } catch {
     return null;
   }
-}
+};
 
-export function setAdminSession(session) {
-  localStorage.setItem(ADMIN_SESSION_KEY, JSON.stringify(session));
-}
+export const isLoggedIn = () => !!getAuthToken();
 
-export function clearAdminSession() {
-  localStorage.removeItem(ADMIN_SESSION_KEY);
-}
-
-export function isRole(role) {
-  const s = getAdminSession();
-  return s?.role === role;
-}
+export const logout = () => {
+  localStorage.removeItem("auth_token");
+  localStorage.removeItem("auth_role");
+  localStorage.removeItem("admin_info");
+};

@@ -3,7 +3,6 @@ import ChatList from "./ChatList";
 import ChatWindow from "./ChatWindow";
 
 export default function ChatPanel() {
-  // Mock conversations
   const initialChats = useMemo(
     () => [
       {
@@ -48,9 +47,7 @@ export default function ChatPanel() {
 
   const handleSelect = (id) => {
     setActiveId(id);
-    setChats((prev) =>
-      prev.map((c) => (c.id === id ? { ...c, unread: 0 } : c))
-    );
+    setChats((prev) => prev.map((c) => (c.id === id ? { ...c, unread: 0 } : c)));
   };
 
   const handleSend = (text) => {

@@ -43,7 +43,7 @@ export default function Login() {
         return;
       }
 
-      localStorage.setItem("authToken", data.token);
+      localStorage.setItem("auth_token", data.token);
       localStorage.setItem("user", JSON.stringify(data.user));
 
       alert("Logged in successfully!");

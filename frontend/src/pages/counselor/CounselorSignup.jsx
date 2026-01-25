@@ -26,7 +26,7 @@ export default function CounselorSignup() {
     const { name, value, type, checked, files } = e.target;
 
     if (type === "file") {
-      setForm((prev) => ({ ...prev, [name]: files[0] }));
+      setForm((prev) => ({ ...prev, [name]: files?.[0] || null }));
     } else if (type === "checkbox") {
       setForm((prev) => ({ ...prev, [name]: checked }));
     } else {
@@ -47,41 +47,46 @@ export default function CounselorSignup() {
 
     setLoading(true);
 
-    const payload = new FormData();
-    Object.entries(form).forEach(([key, value]) => {
-      if (value !== null) payload.append(key, value);
-    });
-
     try {
-      const res = await fetch(
-        "http://localhost:8000/api/register-counselor",
-        {
-          method: "POST",
-          body: payload,
-        }
-      );
+      // Build multipart payload
+      const payload = new FormData();
+      Object.entries(form).forEach(([key, value]) => {
+        // skip null file fields
+        if (value === null) return;
+        payload.append(key, value);
+      });
+
+      const res = await fetch("http://127.0.0.1:8000/api/register-counselor", {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          // ❗ Do NOT set Content-Type manually for FormData
+        },
+        body: payload,
+      });
 
       const data = await res.json().catch(() => ({}));
 
       if (!res.ok) {
-        if (data.errors) {
+        // Laravel validation (422)
+        if (data?.errors) {
           const firstField = Object.keys(data.errors)[0];
-          setError(data.errors[firstField][0]);
-        } else if (data.message) {
-          setError(data.message);
+          setError(data.errors[firstField]?.[0] || "Validation error.");
         } else {
-          setError("Signup failed. Please try again.");
+          setError(data?.message || "Signup failed. Please try again.");
         }
         return;
       }
 
       alert(
-        "Counselor account created successfully. Your account is pending verification."
+        "Counselor account created successfully. Your account is pending verification by the hospital."
       );
-      navigate("/counselor/login");
+      navigate("/counselor/login", { replace: true });
     } catch (err) {
-      console.error(err);
-      setError("Something went wrong. Please try again.");
+      console.error("SIGNUP ERROR:", err);
+      setError(
+        "Backend not reachable (or CORS blocked). Please check Laravel is running at http://127.0.0.1:8000 and CORS config."
+      );
     } finally {
       setLoading(false);
     }
@@ -115,10 +120,11 @@ export default function CounselorSignup() {
 
       {/* CONTENT */}
       <main className="mx-auto max-w-3xl">
-        <div className="bg-white rounded-3xl border border-[#efe7dc]
+        <div
+          className="bg-white rounded-3xl border border-[#efe7dc]
                         shadow-[0_20px_60px_rgba(0,0,0,0.08)]
-                        px-8 py-10">
-
+                        px-8 py-10"
+        >
           <h1 className="text-2xl font-semibold text-neutral-900 mb-2">
             Counselor Signup 🌿
           </h1>
@@ -134,15 +140,16 @@ export default function CounselorSignup() {
 
           <form onSubmit={handleSubmit} className="space-y-5">
             {/* BASIC INFO */}
-            <Input label="Full Name" name="name" onChange={handleChange} />
-            <Input label="Email" name="email" type="email" onChange={handleChange} />
+            <Input label="Full Name" name="name" value={form.name} onChange={handleChange} />
+            <Input label="Email" name="email" type="email" value={form.email} onChange={handleChange} />
 
             <div className="grid md:grid-cols-2 gap-4">
-              <Input label="Password" name="password" type="password" onChange={handleChange} />
+              <Input label="Password" name="password" type="password" value={form.password} onChange={handleChange} />
               <Input
                 label="Confirm Password"
                 name="password_confirmation"
                 type="password"
+                value={form.password_confirmation}
                 onChange={handleChange}
               />
             </div>
@@ -151,6 +158,7 @@ export default function CounselorSignup() {
               label="Specialization"
               name="specialization"
               placeholder="Anxiety, Depression, Couples"
+              value={form.specialization}
               onChange={handleChange}
             />
 
@@ -158,6 +166,7 @@ export default function CounselorSignup() {
               <Input
                 label="License / Registration Number"
                 name="license_no"
+                value={form.license_no}
                 onChange={handleChange}
               />
               <Input
@@ -165,6 +174,7 @@ export default function CounselorSignup() {
                 name="experience_years"
                 type="number"
                 min="0"
+                value={form.experience_years}
                 onChange={handleChange}
               />
             </div>
@@ -192,6 +202,7 @@ export default function CounselorSignup() {
               name="bio"
               rows="3"
               placeholder="Short professional bio"
+              value={form.bio}
               onChange={handleChange}
               className="w-full rounded-2xl border border-[#e3ded0] bg-[#fffdf7]
                          px-4 py-3 text-sm outline-none resize-none
@@ -203,11 +214,12 @@ export default function CounselorSignup() {
               <input
                 type="checkbox"
                 name="consent"
+                checked={form.consent}
                 onChange={handleChange}
                 className="mt-1"
               />
-              I confirm that the information and documents provided are genuine and
-              agree to verification by the MannSathi team.
+              I confirm that the information and documents provided are genuine and agree to
+              verification by the MannSathi team.
             </label>
 
             <button
@@ -230,16 +242,27 @@ export default function CounselorSignup() {
 
 /* ---------- Small reusable inputs ---------- */
 
-function Input({ label, name, type = "text", placeholder, ...props }) {
+function Input({ label, name, type = "text", placeholder, value, ...props }) {
   return (
     <div>
-      <label className="block text-sm font-medium text-neutral-800 mb-2">
+      <label htmlFor={name} className="block text-sm font-medium text-neutral-800 mb-2">
         {label}
       </label>
       <input
+        id={name}
         type={type}
         name={name}
+        value={value}
         placeholder={placeholder}
+        autoComplete={
+          name === "email"
+            ? "email"
+            : name === "password"
+            ? "new-password"
+            : name === "password_confirmation"
+            ? "new-password"
+            : "off"
+        }
         {...props}
         className="w-full rounded-2xl border border-[#e3ded0] bg-[#fffdf7]
                    px-4 py-3 text-sm outline-none
@@ -252,10 +275,11 @@ function Input({ label, name, type = "text", placeholder, ...props }) {
 function FileInput({ label, name, ...props }) {
   return (
     <div>
-      <label className="block text-sm font-medium text-neutral-800 mb-2">
+      <label htmlFor={name} className="block text-sm font-medium text-neutral-800 mb-2">
         {label}
       </label>
       <input
+        id={name}
         type="file"
         name={name}
         {...props}
