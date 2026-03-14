@@ -8,16 +8,17 @@ use App\Models\Appointment;
 
 class UserSessionController extends Controller
 {
-    // GET /api/user/sessions
-    public function index()
+    public function index(Request $request)
     {
-        $userId = auth()->id();
-        if (!$userId) {
+        $user = $request->user();
+
+        if (!$user) {
             return response()->json(['message' => 'Unauthorized'], 401);
         }
 
         $sessions = Appointment::with('counselor:id,name,email')
-            ->where('user_id', $userId)
+            ->where('user_id', $user->id)
+            ->whereIn('status', ['confirmed', 'completed'])
             ->orderBy('date_time', 'asc')
             ->get()
             ->map(function ($session) {
@@ -35,19 +36,20 @@ class UserSessionController extends Controller
         return response()->json(['items' => $sessions], 200);
     }
 
-    // GET /api/user/sessions/next
-    public function next()
+    public function next(Request $request)
     {
-        $userId = auth()->id();
-        if (!$userId) {
+        $user = $request->user();
+
+        if (!$user) {
             return response()->json(['message' => 'Unauthorized'], 401);
         }
 
         $now = now();
+
         $nextSession = Appointment::with('counselor:id,name,email')
-            ->where('user_id', $userId)
+            ->where('user_id', $user->id)
             ->where('date_time', '>=', $now)
-            ->whereIn('status', ['pending', 'confirmed'])
+            ->whereIn('status', ['confirmed'])
             ->orderBy('date_time', 'asc')
             ->first();
 
@@ -68,11 +70,11 @@ class UserSessionController extends Controller
         ], 200);
     }
 
-    // POST /api/user/sessions
     public function store(Request $request)
     {
-        $userId = auth()->id();
-        if (!$userId) {
+        $user = $request->user();
+
+        if (!$user) {
             return response()->json(['message' => 'Unauthorized'], 401);
         }
 
@@ -83,11 +85,11 @@ class UserSessionController extends Controller
         ]);
 
         $appt = Appointment::create([
-            'user_id' => $userId,
+            'user_id' => $user->id,
             'counselor_id' => $data['counselor_id'],
             'date_time' => $data['date_time'],
             'type' => $data['type'] ?? 'chat',
-            'status' => 'pending',
+            'status' => 'confirmed',
         ]);
 
         return response()->json([

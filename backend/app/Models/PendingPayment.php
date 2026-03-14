@@ -5,38 +5,29 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 
-class Appointment extends Model
+class PendingPayment extends Model
 {
     use HasFactory;
 
     protected $fillable = [
         'user_id',
         'counselor_id',
-        'date_time',
+        'appointment_date',
+        'appointment_time',
         'type',
         'name',
         'nickname',
         'email',
         'phone',
-        'status',
-        'payment_status',
-        'payment_method',
         'amount',
-        'transaction_ref',
+        'payment_method',
+        'transaction_uuid',
+        'status',
+        'gateway_response',
     ];
 
     protected $casts = [
-        'date_time' => 'datetime',
+        'appointment_date' => 'date',
         'amount' => 'decimal:2',
     ];
-
-    public function user()
-    {
-        return $this->belongsTo(User::class);
-    }
-
-    public function counselor()
-    {
-        return $this->belongsTo(Counselor::class);
-    }
 }

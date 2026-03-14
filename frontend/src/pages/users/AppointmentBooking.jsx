@@ -4,59 +4,22 @@ import api from "../../utils/api";
 
 export default function BookAppointment() {
   const nav = useNavigate();
+
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
-  // Demo mode for FYP fallback when backend is unavailable
-  const [isDemoMode, setIsDemoMode] = useState(false);
 
-  /* ================= REAL DATA ================= */
   const [counselors, setCounselors] = useState([]);
   const [loadingCounselors, setLoadingCounselors] = useState(true);
 
-  /* ================= PAYMENT MODAL STATE ================= */
+  const [bookedSlots, setBookedSlots] = useState([]);
+  const [loadingSlots, setLoadingSlots] = useState(false);
+
   const [paymentOpen, setPaymentOpen] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState("esewa");
   const [paying, setPaying] = useState(false);
-  const [paySuccess, setPaySuccess] = useState(false);
 
-  // Check authentication on mount
-  useEffect(() => {
-    const token = localStorage.getItem("auth_token");
-    if (!token) {
-      nav("/login", { replace: true });
-    }
-  }, [nav]);
-
-  useEffect(() => {
-    const loadCounselors = async () => {
-      setLoadingCounselors(true);
-      setError("");
-      try {
-        const res = await api.get("/counselors");
-        setCounselors(res.data?.items || []);
-      } catch (e) {
-        console.error("Failed to load counselors", e);
-
-        if (e?.response?.status === 401) {
-          // Clear auth state and redirect to login
-          localStorage.removeItem("auth_token");
-          localStorage.removeItem("user");
-          nav("/login", { replace: true });
-        } else {
-          // Set error message for display instead of alert
-          setError("Failed to load counselors. Please try again later.");
-          setCounselors([]);
-        }
-      } finally {
-        setLoadingCounselors(false);
-      }
-    };
-    loadCounselors();
-  }, [nav]);
-
-  /* ================= FORM ================= */
   const [formData, setFormData] = useState({
     counselor_id: "",
     counselorName: "",
@@ -73,7 +36,40 @@ export default function BookAppointment() {
 
   const [selectedTime, setSelectedTime] = useState("");
 
-  /* ================= STATIC UI DATA ================= */
+  useEffect(() => {
+    const token = localStorage.getItem("auth_token");
+    if (!token) {
+      nav("/login", { replace: true });
+    }
+  }, [nav]);
+
+  useEffect(() => {
+    const loadCounselors = async () => {
+      setLoadingCounselors(true);
+      setError("");
+
+      try {
+        const res = await api.get("/counselors");
+        setCounselors(res.data?.items || []);
+      } catch (e) {
+        console.error("Failed to load counselors", e);
+
+        if (e?.response?.status === 401) {
+          localStorage.removeItem("auth_token");
+          localStorage.removeItem("user");
+          nav("/login", { replace: true });
+        } else {
+          setError("Failed to load counselors. Please try again later.");
+          setCounselors([]);
+        }
+      } finally {
+        setLoadingCounselors(false);
+      }
+    };
+
+    loadCounselors();
+  }, [nav]);
+
   const months = [
     "January",
     "February",
@@ -88,17 +84,17 @@ export default function BookAppointment() {
     "November",
     "December",
   ];
+
   const currentYear = new Date().getFullYear();
   const years = [currentYear.toString(), (currentYear + 1).toString()];
 
-  // Generate actual dates for the selected month/year (first 14 days)
   const generateDatesForMonth = () => {
     const monthIndex = months.indexOf(formData.month);
     const year = parseInt(formData.year, 10);
     const daysInMonth = new Date(year, monthIndex + 1, 0).getDate();
     const dates = [];
 
-    for (let day = 1; day <= Math.min(daysInMonth, 14); day++) {
+    for (let day = 1; day <= daysInMonth; day++) {
       const date = new Date(year, monthIndex, day);
       const dayName = date.toLocaleDateString("en-US", { weekday: "short" });
       dates.push({ day, dayName, date });
@@ -112,7 +108,21 @@ export default function BookAppointment() {
     [formData.month, formData.year]
   );
 
-  // BACKEND-SAFE TIME SLOTS (HH:mm)
+  const selectedDateISO = useMemo(() => {
+    const monthIndex = months.indexOf(formData.month);
+    const year = parseInt(formData.year, 10);
+    const day = parseInt(formData.date, 10);
+
+    if (monthIndex < 0 || !year || !day) return "";
+
+    const localDate = new Date(year, monthIndex, day);
+    const yyyy = localDate.getFullYear();
+    const mm = String(localDate.getMonth() + 1).padStart(2, "0");
+    const dd = String(localDate.getDate()).padStart(2, "0");
+
+    return `${yyyy}-${mm}-${dd}`;
+  }, [formData.month, formData.year, formData.date, months]);
+
   const timeSlots = [
     { label: "9:30 AM", subLabel: "Morning", value: "09:30", icon: "🌅" },
     { label: "10:30 AM", subLabel: "Morning", value: "10:30", icon: "🌅" },
@@ -124,7 +134,42 @@ export default function BookAppointment() {
     { label: "5:00 PM", subLabel: "Evening", value: "17:00", icon: "🌆" },
   ];
 
-  /* ================= HELPERS ================= */
+  useEffect(() => {
+    const fetchBookedSlots = async () => {
+      if (!formData.counselor_id || !selectedDateISO) {
+        setBookedSlots([]);
+        return;
+      }
+
+      setLoadingSlots(true);
+
+      try {
+        const res = await api.get("/appointments/booked-slots", {
+          params: {
+            counselor_id: formData.counselor_id,
+            date: selectedDateISO,
+          },
+        });
+
+        setBookedSlots(res.data?.items || []);
+      } catch (e) {
+        console.error("Failed to fetch booked slots", e);
+        setBookedSlots([]);
+      } finally {
+        setLoadingSlots(false);
+      }
+    };
+
+    fetchBookedSlots();
+  }, [formData.counselor_id, selectedDateISO]);
+
+  useEffect(() => {
+    if (selectedTime && bookedSlots.includes(selectedTime)) {
+      setSelectedTime("");
+      setFormData((p) => ({ ...p, time: "" }));
+    }
+  }, [bookedSlots, selectedTime]);
+
   const handleChange = (e) => {
     const { name, value } = e.target;
     setFormData((p) => ({ ...p, [name]: value }));
@@ -136,11 +181,18 @@ export default function BookAppointment() {
       counselor_id: counselor.id,
       counselorName: counselor.name,
       counselorSpecialization: counselor.specialization || "",
+      time: "",
     }));
+    setSelectedTime("");
   };
 
   const handleDayClick = (dateObj) => {
-    setFormData((p) => ({ ...p, date: dateObj.day.toString() }));
+    setFormData((p) => ({
+      ...p,
+      date: dateObj.day.toString(),
+      time: "",
+    }));
+    setSelectedTime("");
   };
 
   const handleTimeClick = (slot) => {
@@ -150,45 +202,87 @@ export default function BookAppointment() {
 
   const canContinue = useMemo(() => {
     if (step === 1) return !!formData.counselor_id;
-    if (step === 2) return !!formData.date && !!formData.time;
+    if (step === 2) {
+      return !!formData.date && !!formData.time && !bookedSlots.includes(formData.time);
+    }
     if (step === 3) return !!formData.name && !!formData.email && !!formData.phone;
     return true;
-  }, [step, formData]);
+  }, [step, formData, bookedSlots]);
 
-  /* ================= PAYMENT HANDLING (DEMO ONLY) ================= */
-  const handlePayNowDemo = async () => {
-    setPaying(true);
-    setPaySuccess(false);
-    setError("");
-    setIsDemoMode(true);
+  const handleEsewaPayment = async () => {
+    if (paymentMethod !== "esewa") {
+      setError("For now, only eSewa payment is enabled.");
+      return;
+    }
 
-    // Demo-only: no backend calls for FYP presentation
-    await new Promise((resolve) => setTimeout(resolve, 1300));
+    try {
+      setPaying(true);
+      setError("");
+      setSuccessMessage("");
 
-    setPaySuccess(true);
-    setSuccessMessage("Payment successful. Appointment booked (Pending confirmation).");
+      const payload = {
+        counselor_id: formData.counselor_id,
+        appointment_date: selectedDateISO,
+        appointment_time: formData.time,
+        type: "chat",
+        name: formData.name,
+        nickname: formData.nickname,
+        email: formData.email,
+        phone: formData.phone,
+        amount: 500,
+      };
 
-    // Auto navigate after brief success display
-    setTimeout(() => {
-      setPaymentOpen(false);
-      nav("/users/dashboard", { replace: true });
-    }, 1000);
+      const res = await api.post("/esewa/pay", payload);
 
-    setPaying(false);
+      const { payment_url, form_fields } = res.data || {};
+
+      if (!payment_url || !form_fields) {
+        throw new Error("Invalid eSewa payment response.");
+      }
+
+      const form = document.createElement("form");
+      form.method = "POST";
+      form.action = payment_url;
+
+      Object.entries(form_fields).forEach(([key, value]) => {
+        const input = document.createElement("input");
+        input.type = "hidden";
+        input.name = key;
+        input.value = value;
+        form.appendChild(input);
+      });
+
+      document.body.appendChild(form);
+      form.submit();
+    } catch (e) {
+      console.error("Payment initiation failed", e);
+
+      if (e?.response?.status === 422) {
+        setError(e?.response?.data?.message || "This slot is already booked.");
+      } else if (e?.response?.status === 401) {
+        localStorage.removeItem("auth_token");
+        localStorage.removeItem("user");
+        nav("/login", { replace: true });
+      } else {
+        setError(e?.response?.data?.message || "Failed to initialize eSewa payment.");
+      }
+    } finally {
+      setPaying(false);
+    }
   };
 
-  // Close modal on ESC for better UX
   useEffect(() => {
     if (!paymentOpen) return;
+
     const onKeyDown = (e) => {
-      if (e.key === "Escape") setPaymentOpen(false);
+      if (e.key === "Escape" && !paying) setPaymentOpen(false);
     };
+
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [paymentOpen]);
+  }, [paymentOpen, paying]);
 
-  /* ================= FORM SUBMISSION ================= */
-  const handleNext = async () => {
+  const handleNext = () => {
     setError("");
 
     if (step < 4) {
@@ -196,10 +290,7 @@ export default function BookAppointment() {
       return;
     }
 
-    // On step 4 (review), open payment modal instead of directly booking
     if (step === 4) {
-      setPaySuccess(false);
-      setPaying(false);
       setPaymentOpen(true);
     }
   };
@@ -215,10 +306,8 @@ export default function BookAppointment() {
     { num: 4, title: "Review & Confirm", desc: "Double-check your booking" },
   ];
 
-  /* ================= UI ================= */
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#f8f6f0] via-[#f5f8f5] to-[#f0f8f5]">
-      {/* Error Alert Banner */}
       {error && (
         <div className="fixed top-0 left-0 right-0 z-50 bg-red-50 border-b-2 border-red-400 px-6 py-4">
           <div className="max-w-4xl mx-auto flex items-center justify-between">
@@ -237,18 +326,12 @@ export default function BookAppointment() {
         </div>
       )}
 
-      {/* Success Message Banner */}
       {successMessage && (
         <div className="fixed top-0 left-0 right-0 z-50 bg-green-50 border-b-2 border-green-400 px-6 py-4">
           <div className="max-w-4xl mx-auto flex items-center justify-between">
             <div className="flex items-center gap-3">
               <span className="text-2xl">✓</span>
               <span className="text-green-800 font-medium">{successMessage}</span>
-              {isDemoMode && (
-                <span className="text-xs font-semibold bg-amber-100 text-amber-800 px-2 py-1 rounded-full">
-                  Pending (Demo Mode)
-                </span>
-              )}
             </div>
             <button
               onClick={() => setSuccessMessage("")}
@@ -261,7 +344,6 @@ export default function BookAppointment() {
         </div>
       )}
 
-      {/* Header */}
       <div className="bg-gradient-to-r from-[#215c4c] to-[#2a7a66] text-white px-6 py-8 shadow-lg">
         <div className="max-w-4xl mx-auto">
           <Link
@@ -270,10 +352,10 @@ export default function BookAppointment() {
           >
             ← Back to Dashboard
           </Link>
+
           <h1 className="text-3xl font-bold mb-2">Book Your Session</h1>
           <p className="text-white/90">Let's find the perfect time for your counseling session</p>
 
-          {/* Progress Bar */}
           <div className="mt-6 bg-white/20 rounded-full h-2 overflow-hidden">
             <div
               className="bg-white h-full rounded-full transition-all duration-500 ease-out"
@@ -281,7 +363,6 @@ export default function BookAppointment() {
             />
           </div>
 
-          {/* Step Indicators */}
           <div className="mt-6 flex justify-between items-center">
             {stepTitles.map((s) => (
               <div key={s.num} className="flex flex-col items-center">
@@ -308,10 +389,8 @@ export default function BookAppointment() {
         </div>
       </div>
 
-      {/* Main Content */}
       <div className="max-w-4xl mx-auto px-6 py-10">
         <div className="bg-white rounded-3xl shadow-xl p-8 md:p-10">
-          {/* Step Title */}
           <div className="mb-8">
             <h2 className="text-2xl font-bold text-[#1e293b] mb-2">
               {stepTitles[step - 1].title}
@@ -319,7 +398,6 @@ export default function BookAppointment() {
             <p className="text-[#6b7280]">{stepTitles[step - 1].desc}</p>
           </div>
 
-          {/* STEP 1: Choose Counselor */}
           {step === 1 && (
             <div className="space-y-4">
               {loadingCounselors ? (
@@ -374,10 +452,8 @@ export default function BookAppointment() {
             </div>
           )}
 
-          {/* STEP 2: Date & Time */}
           {step === 2 && (
             <div className="space-y-8">
-              {/* Month & Year Selector */}
               <div className="grid sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-[#374151] mb-2">Month</label>
@@ -394,6 +470,7 @@ export default function BookAppointment() {
                     ))}
                   </select>
                 </div>
+
                 <div>
                   <label className="block text-sm font-medium text-[#374151] mb-2">Year</label>
                   <select
@@ -411,12 +488,12 @@ export default function BookAppointment() {
                 </div>
               </div>
 
-              {/* Date Picker */}
               <div>
                 <label className="block text-sm font-medium text-[#374151] mb-3">Select Date</label>
                 <div className="grid grid-cols-7 gap-2">
                   {availableDates.map((dateObj) => {
                     const isSelected = formData.date === dateObj.day.toString();
+
                     return (
                       <button
                         key={`${dateObj.dayName}-${dateObj.day}`}
@@ -437,29 +514,41 @@ export default function BookAppointment() {
                 </div>
               </div>
 
-              {/* Time Slots */}
               <div>
                 <label className="block text-sm font-medium text-[#374151] mb-3">Choose Time</label>
+
+                {loadingSlots && (
+                  <p className="text-sm text-[#6b7280] mb-3">Checking available slots...</p>
+                )}
+
                 <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
                   {timeSlots.map((slot) => {
                     const isSelected = selectedTime === slot.value;
+                    const isBooked = bookedSlots.includes(slot.value);
+
                     return (
                       <button
                         key={slot.value}
-                        onClick={() => handleTimeClick(slot)}
-                        className={`p-4 rounded-xl border-2 transition-all hover:shadow-md text-left
+                        onClick={() => !isBooked && handleTimeClick(slot)}
+                        disabled={isBooked}
+                        className={`p-4 rounded-xl border-2 transition-all text-left
                           ${
-                            isSelected
+                            isBooked
+                              ? "border-red-300 bg-red-50 text-red-400 cursor-not-allowed opacity-80"
+                              : isSelected
                               ? "border-[#215c4c] bg-[#f2fbf5] shadow-md"
-                              : "border-[#e5e7eb] hover:border-[#a8d4c3]"
+                              : "border-[#e5e7eb] hover:border-[#a8d4c3] hover:shadow-md"
                           }`}
                         type="button"
                       >
                         <div className="flex items-center gap-2 mb-1">
                           <span className="text-xl">{slot.icon}</span>
-                          <span className="font-semibold text-[#1e293b]">{slot.label}</span>
+                          <span className="font-semibold">
+                            {slot.label}
+                            {isBooked && " (Booked)"}
+                          </span>
                         </div>
-                        <p className="text-xs text-[#6b7280]">{slot.subLabel}</p>
+                        <p className="text-xs">{isBooked ? "Unavailable" : slot.subLabel}</p>
                       </button>
                     );
                   })}
@@ -468,7 +557,6 @@ export default function BookAppointment() {
             </div>
           )}
 
-          {/* STEP 3: User Information */}
           {step === 3 && (
             <div className="space-y-5">
               <div>
@@ -529,14 +617,13 @@ export default function BookAppointment() {
 
               <div className="mt-6 p-4 bg-blue-50 rounded-xl border border-blue-200">
                 <p className="text-sm text-blue-800">
-                  <strong>Privacy Notice:</strong> Your information is confidential and will only be used to
-                  facilitate your counseling session.
+                  <strong>Privacy Notice:</strong> Your information is confidential and will only be
+                  used to facilitate your counseling session.
                 </p>
               </div>
             </div>
           )}
 
-          {/* STEP 4: Review */}
           {step === 4 && (
             <div className="space-y-6">
               <div className="bg-gradient-to-br from-[#f2fbf5] to-[#e8f5e9] rounded-2xl p-6 border-2 border-[#a8d4c3]">
@@ -597,14 +684,13 @@ export default function BookAppointment() {
 
               <div className="bg-amber-50 rounded-xl p-4 border border-amber-200">
                 <p className="text-sm text-amber-800">
-                  <strong>⏳ Pending Confirmation:</strong> Your appointment will be pending until confirmed by
-                  the counselor. You'll receive a notification once confirmed.
+                  <strong>⏳ Pending Confirmation:</strong> Your appointment will remain pending until
+                  confirmed by the counselor after successful payment verification.
                 </p>
               </div>
             </div>
           )}
 
-          {/* Navigation Buttons */}
           <div className="flex items-center justify-between mt-10 pt-6 border-t border-[#e5e7eb]">
             {step > 1 ? (
               <button
@@ -644,25 +730,21 @@ export default function BookAppointment() {
         </div>
       </div>
 
-      {/* ================= PAYMENT MODAL ================= */}
       {paymentOpen && (
         <div
           className="fixed inset-0 z-50 flex items-end md:items-center justify-center p-4 bg-black/40"
           onClick={() => !paying && setPaymentOpen(false)}
         >
-          {/* MODAL CARD */}
           <div
             className="w-full max-w-md bg-white rounded-3xl shadow-2xl overflow-hidden
                        animate-in slide-in-from-bottom-5 md:slide-in-from-center
                        max-h-[90vh] flex flex-col"
             onClick={(e) => e.stopPropagation()}
           >
-            {/* Header (relative for close button) */}
             <div className="relative bg-gradient-to-r from-[#215c4c] to-[#2a7a66] text-white px-6 py-6">
               <h2 className="text-2xl font-bold flex items-center gap-3">💳 Confirm Payment</h2>
               <p className="text-white/80 text-sm mt-1">Complete your booking</p>
 
-              {/* Close X */}
               <button
                 type="button"
                 onClick={() => !paying && setPaymentOpen(false)}
@@ -673,9 +755,7 @@ export default function BookAppointment() {
               </button>
             </div>
 
-            {/* Scrollable modal content */}
             <div className="p-6 space-y-6 flex-1 overflow-y-auto">
-              {/* Booking Summary */}
               <div className="bg-gradient-to-br from-[#f2fbf5] to-[#e8f5e9] rounded-2xl p-4 border border-[#a8d4c3]">
                 <h3 className="font-semibold text-[#1e293b] mb-3 text-sm">Booking Summary</h3>
                 <div className="space-y-2">
@@ -702,7 +782,6 @@ export default function BookAppointment() {
                 </div>
               </div>
 
-              {/* Amount Display */}
               <div className="bg-white border-2 border-[#e5e7eb] rounded-xl p-4">
                 <p className="text-sm text-[#6b7280] mb-1">Amount to Pay</p>
                 <div className="flex items-baseline gap-1">
@@ -711,12 +790,10 @@ export default function BookAppointment() {
                 </div>
               </div>
 
-              {/* Payment Method Selector */}
               <div className="space-y-3">
                 <p className="text-sm font-semibold text-[#374151]">Select Payment Method</p>
 
                 <div className="space-y-2">
-                  {/* eSewa */}
                   <button
                     type="button"
                     onClick={() => setPaymentMethod("esewa")}
@@ -737,87 +814,47 @@ export default function BookAppointment() {
                     >
                       {paymentMethod === "esewa" && <span className="text-white text-sm">✓</span>}
                     </div>
+
                     <span className="text-left">
                       <div className="font-semibold text-[#1e293b]">eSewa</div>
-                      <p className="text-xs text-[#6b7280]">Popular in Nepal</p>
+                      <p className="text-xs text-[#6b7280]">Enabled for sandbox payment</p>
                     </span>
                   </button>
 
-                  {/* Khalti */}
                   <button
                     type="button"
-                    onClick={() => setPaymentMethod("khalti")}
-                    className={`w-full p-4 rounded-xl border-2 transition-all flex items-center gap-3
-                      ${
-                        paymentMethod === "khalti"
-                          ? "border-[#215c4c] bg-[#f2fbf5] shadow-md"
-                          : "border-[#e5e7eb] hover:border-[#a8d4c3]"
-                      }`}
+                    disabled
+                    className="w-full p-4 rounded-xl border-2 border-[#e5e7eb] opacity-50 cursor-not-allowed flex items-center gap-3"
                   >
-                    <div
-                      className={`w-6 h-6 rounded-full border-2 flex items-center justify-center flex-shrink-0
-                      ${
-                        paymentMethod === "khalti"
-                          ? "border-[#215c4c] bg-[#215c4c]"
-                          : "border-[#d1d5db]"
-                      }`}
-                    >
-                      {paymentMethod === "khalti" && <span className="text-white text-sm">✓</span>}
-                    </div>
+                    <div className="w-6 h-6 rounded-full border-2 border-[#d1d5db] flex items-center justify-center flex-shrink-0" />
                     <span className="text-left">
                       <div className="font-semibold text-[#1e293b]">Khalti</div>
-                      <p className="text-xs text-[#6b7280]">Digital Wallet</p>
+                      <p className="text-xs text-[#6b7280]">Coming next</p>
                     </span>
                   </button>
 
-                  {/* Card */}
                   <button
                     type="button"
-                    onClick={() => setPaymentMethod("card")}
-                    className={`w-full p-4 rounded-xl border-2 transition-all flex items-center gap-3
-                      ${
-                        paymentMethod === "card"
-                          ? "border-[#215c4c] bg-[#f2fbf5] shadow-md"
-                          : "border-[#e5e7eb] hover:border-[#a8d4c3]"
-                      }`}
+                    disabled
+                    className="w-full p-4 rounded-xl border-2 border-[#e5e7eb] opacity-50 cursor-not-allowed flex items-center gap-3"
                   >
-                    <div
-                      className={`w-6 h-6 rounded-full border-2 flex items-center justify-center flex-shrink-0
-                      ${
-                        paymentMethod === "card"
-                          ? "border-[#215c4c] bg-[#215c4c]"
-                          : "border-[#d1d5db]"
-                      }`}
-                    >
-                      {paymentMethod === "card" && <span className="text-white text-sm">✓</span>}
-                    </div>
+                    <div className="w-6 h-6 rounded-full border-2 border-[#d1d5db] flex items-center justify-center flex-shrink-0" />
                     <span className="text-left">
                       <div className="font-semibold text-[#1e293b]">Credit/Debit Card</div>
-                      <p className="text-xs text-[#6b7280]">Visa, Mastercard</p>
+                      <p className="text-xs text-[#6b7280]">Not enabled yet</p>
                     </span>
                   </button>
                 </div>
               </div>
 
-              {/* Demo Success Message */}
-              {paySuccess && (
-                <div className="bg-green-50 border border-green-200 rounded-xl p-3">
-                  <p className="text-sm text-green-800 font-semibold">
-                    ✅ Payment successful. Appointment booked (Pending confirmation).
-                  </p>
-                </div>
-              )}
-
-              {/* Demo Notice */}
               <div className="bg-blue-50 border border-blue-200 rounded-xl p-3">
                 <p className="text-xs text-blue-800">
-                  <strong>🧪 </strong> No real charges will be made. Click "Pay Now" to
-                  simulate a successful payment.
+                  <strong>🧪 Sandbox Mode:</strong> You will be redirected to eSewa's test payment
+                  page. The appointment slot will only be booked after successful payment callback.
                 </p>
               </div>
             </div>
 
-            {/* Modal Footer / Buttons */}
             <div className="px-6 py-4 bg-gray-50 border-t border-[#e5e7eb] flex gap-3">
               <button
                 type="button"
@@ -830,11 +867,11 @@ export default function BookAppointment() {
 
               <button
                 type="button"
-                onClick={handlePayNowDemo}
-                disabled={paying || paySuccess}
+                onClick={handleEsewaPayment}
+                disabled={paying}
                 className={`flex-1 px-4 py-3 rounded-full font-semibold transition-all flex items-center justify-center gap-2
                   ${
-                    paying || paySuccess
+                    paying
                       ? "bg-gray-300 text-gray-500 cursor-not-allowed"
                       : "bg-gradient-to-r from-[#215c4c] to-[#2a7a66] text-white hover:shadow-lg hover:scale-105"
                   }`}
@@ -842,12 +879,10 @@ export default function BookAppointment() {
                 {paying ? (
                   <>
                     <span className="inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    Processing...
+                    Redirecting...
                   </>
-                ) : paySuccess ? (
-                  <>Done</>
                 ) : (
-                  <>💳 Pay Now</>
+                  <>💳 Pay with eSewa</>
                 )}
               </button>
             </div>

@@ -1,0 +1,81 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+    @apply bg-lavender text-gray-800 font-sans;
+}
+
+h1, h2, h3, h4, h5, h6 {
+    @apply font-bold;
+}
+
+h1 {
+    @apply text-3xl mb-4;
+}
+
+h2 {
+    @apply text-2xl mb-3;
+}
+
+h3 {
+    @apply text-xl mb-2;
+}
+
+h4 {
+    @apply text-lg mb-1;
+}
+
+p {
+    @apply mb-4;
+}
+
+.container {
+    @apply mx-auto p-6;
+}
+
+.sidebar {
+    @apply bg-soft-blue shadow-md rounded-2xl p-6;
+}
+
+.card {
+    @apply bg-white shadow-md rounded-2xl p-4 transition-transform duration-200 hover:scale-105;
+}
+
+.button {
+    @apply bg-mint-green text-white rounded-xl py-2 px-4 transition-transform duration-200 hover:scale-105;
+}
+
+.empty-state {
+    @apply text-center text-gray-500 p-6 rounded-2xl bg-soft-pink;
+}
+
+.message-bubble {
+    @apply rounded-lg p-3 mb-2;
+}
+
+.message-bubble.user {
+    @apply bg-mint-green text-white self-end;
+}
+
+.message-bubble.counselor {
+    @apply bg-soft-blue text-gray-800 self-start;
+}
+
+.session-card {
+    @apply bg-white shadow-md rounded-2xl p-4 mb-4;
+}
+
+.counselor-card {
+    @apply bg-white shadow-md rounded-2xl p-4 mb-4;
+}
+
+.dashboard-card {
+    @apply bg-white shadow-md rounded-2xl p-4 mb-4;
+}
+
+@media (max-width: 768px) {
+    .container {
+        @apply p-4;
+    }
+}

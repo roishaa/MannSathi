@@ -26,6 +26,9 @@ import Chat from "./pages/users/Chat";
 import SearchDoctor from "./pages/SearchDoctor";
 import TestAuth from "./pages/TestAuth";
 import DebugAuth from "./pages/DebugAuth";
+import PaymentSuccess from "./pages/users/PaymentSuccess";
+import PaymentFailed from "./pages/users/PaymentFailed";
+import Sessions from "./pages/users/Sessions";
 
 // ================= TOPIC PAGES =================
 import Anxiety from "./pages/topics/Anxiety";
@@ -92,6 +95,9 @@ function App() {
           <Route path="/search-doctor" element={<SearchDoctor />} />
           <Route path="/test-auth" element={<TestAuth />} />
           <Route path="/debug-auth" element={<DebugAuth />} />
+          <Route path="/payment-success" element={<PaymentSuccess />} />
+          <Route path="/payment-failed" element={<PaymentFailed />} />
+          <Route path="/sessions" element={<Sessions />} />
         </Route>
 
         {/* ================= TOPIC ROUTES ================= */}
