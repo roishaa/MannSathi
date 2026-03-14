@@ -1,32 +1,19 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import ChatPanel from "./ChatPanel";
+import api from "../../utils/api";
+
+const API_BASE = import.meta.env.VITE_API_BASE;
+if (API_BASE) {
+  api.defaults.baseURL = API_BASE;
+}
 
 export default function CounselorDashboard() {
   const navigate = useNavigate();
 
-  const counselor = useMemo(() => {
-    try {
-      const c = JSON.parse(localStorage.getItem("counselor"));
-      return {
-        name: c?.name || c?.full_name || "Counselor",
-        email: c?.email || "counselor@email.com",
-        specialization: c?.specialization || "Mental Health Counselor",
-        bio: c?.bio || "",
-        availableHours: c?.availableHours || "10:00 AM - 5:00 PM",
-        payoutInfo: c?.payoutInfo || "",
-      };
-    } catch {
-      return {
-        name: "Counselor",
-        email: "counselor@email.com",
-        specialization: "Mental Health Counselor",
-        bio: "",
-        availableHours: "10:00 AM - 5:00 PM",
-        payoutInfo: "",
-      };
-    }
-  }, []);
+  const [counselor, setCounselor] = useState(null);
+  const [isLoadingCounselor, setIsLoadingCounselor] = useState(true);
+  const [counselorError, setCounselorError] = useState("");
 
   // Tabs updated to match your requirement sections
   const [activeTab, setActiveTab] = useState("overview");
@@ -41,81 +28,31 @@ export default function CounselorDashboard() {
     }
   });
 
-  // Sessions (dummy data -> later replace with API)
-  const [sessions, setSessions] = useState([
-    {
-      id: 1,
-      patient: "Roisha Maharjan",
-      time: "10:30 AM",
-      date: "Today",
-      type: "Chat",
-      status: "Scheduled",
-      topic: "Anxiety & stress",
-      notes: "",
-      feedback: "",
-      rating: null,
-      quizShared: true,
-      quiz: { stress: 7, anxiety: 6, sleep: 4 },
-    },
-    {
-      id: 2,
-      patient: "Sujan Shrestha",
-      time: "12:00 PM",
-      date: "Today",
-      type: "Video",
-      status: "Pending",
-      topic: "Relationship",
-      notes: "",
-      feedback: "",
-      rating: null,
-      quizShared: false,
-      quiz: null,
-    },
-    {
-      id: 3,
-      patient: "Anu Lama",
-      time: "04:00 PM",
-      date: "Today",
-      type: "Chat",
-      status: "Scheduled",
-      topic: "Sleep issues",
-      notes: "",
-      feedback: "",
-      rating: 5,
-      quizShared: true,
-      quiz: { stress: 5, anxiety: 3, sleep: 8 },
-    },
-  ]);
+  const [sessions, setSessions] = useState([]);
+  const [sessionsLoading, setSessionsLoading] = useState(true);
+  const [sessionsError, setSessionsError] = useState("");
 
   // Resources & Notes
-  const [personalNotes, setPersonalNotes] = useState(() => {
-    try {
-      return localStorage.getItem("counselor_personal_notes") || "";
-    } catch {
-      return "";
-    }
-  });
+  const [personalNotes, setPersonalNotes] = useState("");
+  const [notesLoading, setNotesLoading] = useState(true);
+  const [notesError, setNotesError] = useState("");
 
-  const [materials, setMaterials] = useState([
-    { id: "m1", title: "Breathing Exercise (PDF)", type: "PDF", uploadedAt: "Jan 10" },
-    { id: "m2", title: "Sleep Hygiene Checklist", type: "DOC", uploadedAt: "Jan 14" },
-  ]);
+  const [materials, setMaterials] = useState([]);
+  const [materialsLoading, setMaterialsLoading] = useState(true);
+  const [materialsError, setMaterialsError] = useState("");
 
-  const sharedContent = useMemo(
-    () => [
-      { id: "s1", title: "What is Anxiety?", tag: "Education" },
-      { id: "s2", title: "Grounding Techniques", tag: "Exercise" },
-      { id: "s3", title: "Stress Management Tips", tag: "Education" },
-    ],
-    []
-  );
+  const [sharedContent, setSharedContent] = useState([]);
+  const [sharedContentLoading, setSharedContentLoading] = useState(true);
+  const [sharedContentError, setSharedContentError] = useState("");
+
+  const [selectedSessionId, setSelectedSessionId] = useState(null);
 
   // Profile & Settings form
   const [profile, setProfile] = useState({
-    bio: counselor.bio,
-    specialization: counselor.specialization,
-    availableHours: counselor.availableHours,
-    payoutInfo: counselor.payoutInfo,
+    bio: "",
+    specialization: "",
+    availableHours: "",
+    payoutInfo: "",
   });
 
   // Secure summary modal after session ends
@@ -125,19 +62,34 @@ export default function CounselorDashboard() {
     summary: "",
   });
 
-  // Analytics (simple local computed demo)
+  const counselorName = counselor?.name || counselor?.full_name || "";
+  const counselorEmail = counselor?.email || "";
+  const counselorSpecialization = counselor?.specialization || "";
+  const counselorBio = counselor?.bio || "";
+  const counselorAvailableHours = counselor?.available_hours || counselor?.availableHours || "";
+  const counselorPayoutInfo = counselor?.payoutInfo || "";
+  const counselorNameLabel = counselorName || "—";
+  const counselorEmailLabel = counselorEmail || "—";
+  const counselorSpecializationLabel = counselorSpecialization || "—";
+
+  const selectedSession = useMemo(
+    () => sessions.find((s) => s.id === selectedSessionId) || null,
+    [sessions, selectedSessionId]
+  );
+
+  // Analytics (computed from live sessions)
   const analytics = useMemo(() => {
     const todayTotal = sessions.filter((s) => s.date === "Today").length;
     const pendingApprovals = sessions.filter((s) => s.status === "Pending").length;
 
-    // Upcoming = anything scheduled/pending today (demo)
+    // Upcoming = anything scheduled/pending today
     const upcomingAppointments = sessions.filter((s) => ["Scheduled", "Pending"].includes(s.status))
       .length;
 
     const rated = sessions.map((s) => s.rating).filter((v) => typeof v === "number");
     const avgRating = rated.length ? (rated.reduce((a, b) => a + b, 0) / rated.length).toFixed(1) : "—";
 
-    // Mood trends from quiz (demo)
+    // Mood trends from quiz
     const quizSessions = sessions.filter((s) => s.quizShared && s.quiz);
     const avg = (key) => {
       if (!quizSessions.length) return 0;
@@ -150,8 +102,8 @@ export default function CounselorDashboard() {
       pendingApprovals,
       upcomingAppointments,
       avgRating,
-      weeklySessions: 12,
-      monthlySessions: 46,
+      weeklySessions: sessions.length,
+      monthlySessions: sessions.length,
       moodTrends: [
         { label: "Stress", value: avg("stress") },
         { label: "Anxiety", value: avg("anxiety") },
@@ -161,11 +113,121 @@ export default function CounselorDashboard() {
   }, [sessions]);
 
   const dailyMessage = useMemo(() => {
-    // You can swap this for system alerts from backend
     return isOnline
       ? "✅ You are Online. Keep responses timely and professional."
       : "⚠️ You are Offline. Clients cannot request new sessions right now.";
   }, [isOnline]);
+
+  useEffect(() => {
+    const loadCounselor = async () => {
+      setCounselorError("");
+      setIsLoadingCounselor(true);
+      try {
+        const { data } = await api.get("/counselor/me");
+        setCounselor(data?.data || data || null);
+      } catch (err) {
+        setCounselorError(err?.response?.data?.message || "Failed to load counselor profile.");
+        setCounselor(null);
+      } finally {
+        setIsLoadingCounselor(false);
+      }
+    };
+
+    const loadSessions = async () => {
+      setSessionsError("");
+      setSessionsLoading(true);
+      try {
+        const { data } = await api.get("/counselor/sessions");
+        const raw = Array.isArray(data) ? data : data?.data || [];
+        const normalized = raw.map((s) => ({
+          id: s.id,
+          patient: s.patient?.name || s.patient_name || s.client?.name || s.user?.name || s.patient || "—",
+          time: s.time || s.start_time || "",
+          date: s.date || s.day_label || "",
+          type: s.type || s.mode || "",
+          status: s.status || "",
+          topic: s.topic || s.reason || "",
+          notes: s.notes || "",
+          feedback: s.feedback || "",
+          rating: typeof s.rating === "number" ? s.rating : null,
+          quizShared: Boolean(s.quiz_shared ?? s.quizShared),
+          quiz: s.quiz || null,
+          summary: s.summary || "",
+        }));
+        setSessions(normalized);
+      } catch (err) {
+        setSessionsError(err?.response?.data?.message || "Failed to load sessions.");
+        setSessions([]);
+      } finally {
+        setSessionsLoading(false);
+      }
+    };
+
+    const loadMaterials = async () => {
+      setMaterialsError("");
+      setMaterialsLoading(true);
+      try {
+        const { data } = await api.get("/counselor/materials");
+        const raw = Array.isArray(data) ? data : data?.data || [];
+        setMaterials(raw);
+      } catch (err) {
+        setMaterialsError(err?.response?.data?.message || "Failed to load materials.");
+        setMaterials([]);
+      } finally {
+        setMaterialsLoading(false);
+      }
+    };
+
+    const loadNotes = async () => {
+      setNotesError("");
+      setNotesLoading(true);
+      try {
+        const { data } = await api.get("/counselor/notes");
+        if (typeof data === "string") {
+          setPersonalNotes(data);
+        } else if (typeof data?.notes === "string") {
+          setPersonalNotes(data.notes);
+        } else {
+          setPersonalNotes("");
+        }
+      } catch (err) {
+        setNotesError(err?.response?.data?.message || "Failed to load notes.");
+        setPersonalNotes("");
+      } finally {
+        setNotesLoading(false);
+      }
+    };
+
+    const loadSharedContent = async () => {
+      setSharedContentError("");
+      setSharedContentLoading(true);
+      try {
+        const { data } = await api.get("/content/shared");
+        const raw = Array.isArray(data) ? data : data?.data || [];
+        setSharedContent(raw);
+      } catch (err) {
+        setSharedContentError(err?.response?.data?.message || "Failed to load shared content.");
+        setSharedContent([]);
+      } finally {
+        setSharedContentLoading(false);
+      }
+    };
+
+    loadCounselor();
+    loadSessions();
+    loadMaterials();
+    loadNotes();
+    loadSharedContent();
+  }, []);
+
+  useEffect(() => {
+    setProfile({
+      bio: counselorBio,
+      specialization: counselorSpecialization,
+      availableHours: counselorAvailableHours,
+      payoutInfo: counselorPayoutInfo,
+    });
+  }, [counselorBio, counselorSpecialization, counselorAvailableHours, counselorPayoutInfo]);
 
   // ---- Actions ----
   const handleLogout = () => {
@@ -182,59 +244,93 @@ export default function CounselorDashboard() {
     });
   };
 
-  const handleAccept = (id) => {
-    setSessions((prev) => prev.map((s) => (s.id === id ? { ...s, status: "Scheduled" } : s)));
+  const handleAccept = async (id) => {
+    try {
+      await api.post(`/counselor/sessions/${id}/accept`);
+      setSessions((prev) => prev.map((s) => (s.id === id ? { ...s, status: "Scheduled" } : s)));
+    } catch (err) {
+      alert(err?.response?.data?.message || "Failed to accept session.");
+    }
   };
 
-  const handleDecline = (id) => {
-    setSessions((prev) => prev.map((s) => (s.id === id ? { ...s, status: "Declined" } : s)));
+  const handleDecline = async (id) => {
+    try {
+      await api.post(`/counselor/sessions/${id}/decline`);
+      setSessions((prev) => prev.map((s) => (s.id === id ? { ...s, status: "Declined" } : s)));
+    } catch (err) {
+      alert(err?.response?.data?.message || "Failed to decline session.");
+    }
   };
 
   const updateSessionField = (id, field, value) => {
     setSessions((prev) => prev.map((s) => (s.id === id ? { ...s, [field]: value } : s)));
   };
 
-  const savePersonalNotes = () => {
-    localStorage.setItem("counselor_personal_notes", personalNotes);
+  const persistSessionField = async (id, field, value) => {
+    try {
+      await api.patch(`/counselor/sessions/${id}`, { [field]: value });
+    } catch (err) {
+      alert(err?.response?.data?.message || "Failed to save session updates.");
+    }
   };
 
-  const handleUploadMaterial = (file) => {
+  const savePersonalNotes = async () => {
+    setNotesError("");
+    try {
+      await api.post("/counselor/notes", { notes: personalNotes });
+    } catch (err) {
+      setNotesError(err?.response?.data?.message || "Failed to save notes.");
+    }
+  };
+
+  const handleUploadMaterial = async (file) => {
     if (!file) return;
-    setMaterials((prev) => [
-      {
-        id: crypto.randomUUID?.() || String(Date.now()),
-        title: file.name,
-        type: file.name.split(".").pop()?.toUpperCase() || "FILE",
-        uploadedAt: "Today",
-      },
-      ...prev,
-    ]);
+    setMaterialsError("");
+    setMaterialsLoading(true);
+    try {
+      const payload = new FormData();
+      payload.append("file", file);
+      await api.post("/counselor/materials", payload, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      const { data } = await api.get("/counselor/materials");
+      const raw = Array.isArray(data) ? data : data?.data || [];
+      setMaterials(raw);
+    } catch (err) {
+      setMaterialsError(err?.response?.data?.message || "Failed to upload material.");
+    } finally {
+      setMaterialsLoading(false);
+    }
   };
 
-  const saveProfile = () => {
-    // UI only: store locally now; later call API
-    const updated = {
-      ...counselor,
-      specialization: profile.specialization,
-      bio: profile.bio,
-      availableHours: profile.availableHours,
-      payoutInfo: profile.payoutInfo,
-    };
-    localStorage.setItem("counselor", JSON.stringify(updated));
-    alert("Profile saved (local only).");
+  const saveProfile = async () => {
+    try {
+      const { data } = await api.patch("/counselor/me", profile);
+      setCounselor(data?.data || data || counselor);
+      alert("Profile saved.");
+    } catch (err) {
+      alert(err?.response?.data?.message || "Failed to save profile.");
+    }
   };
 
   const openSummaryModal = (sessionId) => {
     setSummaryModal({ open: true, sessionId, summary: "" });
   };
 
-  const saveSecureSummary = () => {
-    // UI-only: you’ll later send this to backend with proper encryption/access control
-    setSummaryModal({ open: false, sessionId: null, summary: "" });
-    alert("Session summary saved (demo).");
+  const saveSecureSummary = async () => {
+    if (!summaryModal.sessionId) return;
+    try {
+      await api.patch(`/counselor/sessions/${summaryModal.sessionId}`, {
+        summary: summaryModal.summary,
+      });
+      setSummaryModal({ open: false, sessionId: null, summary: "" });
+      alert("Session summary saved.");
+    } catch (err) {
+      alert(err?.response?.data?.message || "Failed to save summary.");
+    }
   };
 
-  // Calendar-like grouping (Today / Upcoming / Past) - simple demo logic
+  // Calendar-like grouping (Today / Upcoming / Past)
   const groupedSessions = useMemo(() => {
     const today = sessions.filter((s) => s.date === "Today");
     const other = sessions.filter((s) => s.date !== "Today");
@@ -242,17 +338,23 @@ export default function CounselorDashboard() {
   }, [sessions]);
 
   return (
-    <div className="min-h-screen bg-[#F7F8FC]">
+    <div
+      className="min-h-screen bg-[#f4f1eb] text-[#1c2b2d]"
+      style={{ fontFamily: "'Space Grotesk', sans-serif" }}
+    >
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Space+Grotesk:wght@400;500;600&display=swap');
+      `}</style>
       {/* Topbar */}
-      <div className="sticky top-0 z-30 bg-white border-b">
+      <div className="sticky top-0 z-30 bg-[#f7f3eb]/90 backdrop-blur border-b border-[#e4ddd2]">
         <div className="max-w-7xl mx-auto px-4 md:px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-2xl bg-[#215C4C] text-white flex items-center justify-center font-bold">
+            <div className="h-10 w-10 rounded-2xl bg-[#0f2d2b] text-white flex items-center justify-center font-bold">
               M
             </div>
             <div className="leading-tight">
-              <div className="font-semibold text-gray-900">MannSathi — Counselor</div>
-              <div className="text-xs text-gray-500">{counselor.specialization}</div>
+              <div className="font-semibold text-[#1c2b2d]">MannSathi Counselor</div>
+              <div className="text-xs text-[#6b6f6a]">{counselorSpecializationLabel}</div>
             </div>
           </div>
 
@@ -276,13 +378,13 @@ export default function CounselorDashboard() {
             </button>
 
             <div className="hidden sm:block text-right">
-              <div className="text-sm font-semibold text-gray-900">{counselor.name}</div>
-              <div className="text-xs text-gray-500">{counselor.email}</div>
+              <div className="text-sm font-semibold text-gray-900">{counselorNameLabel}</div>
+              <div className="text-xs text-gray-500">{counselorEmailLabel}</div>
             </div>
 
             <button
               onClick={handleLogout}
-              className="px-4 py-2 rounded-xl bg-[#215C4C] text-white hover:opacity-95 text-sm font-semibold"
+              className="px-4 py-2 rounded-xl bg-[#0f2d2b] text-white hover:opacity-95 text-sm font-semibold"
             >
               Logout
             </button>
@@ -293,14 +395,20 @@ export default function CounselorDashboard() {
       <div className="max-w-7xl mx-auto px-4 md:px-6 py-6 grid grid-cols-12 gap-6">
         {/* Sidebar */}
         <aside className="col-span-12 md:col-span-3">
-          <div className="bg-white rounded-2xl shadow-sm border p-4">
+          <div className="bg-white/80 backdrop-blur rounded-2xl shadow-sm border border-white/60 p-4">
             <div className="flex items-center gap-3">
-              <div className="h-12 w-12 rounded-2xl bg-[#F7D8DD] flex items-center justify-center font-bold text-[#215C4C]">
-                {counselor.name?.slice(0, 1)?.toUpperCase()}
+              <div className="h-12 w-12 rounded-2xl bg-[#f4b860]/20 flex items-center justify-center font-bold text-[#0f2d2b]">
+                {counselorNameLabel?.slice(0, 1)?.toUpperCase()}
               </div>
               <div className="min-w-0">
-                <div className="font-semibold text-gray-900 truncate">{counselor.name}</div>
-                <div className="text-xs text-gray-500 truncate">{counselor.email}</div>
+                <div className="font-semibold text-[#1c2b2d] truncate">{counselorNameLabel}</div>
+                <div className="text-xs text-[#6b6f6a] truncate">{counselorEmailLabel}</div>
+                {isLoadingCounselor && (
+                  <div className="text-[11px] text-[#6b6f6a] mt-1">Loading profile...</div>
+                )}
+                {!isLoadingCounselor && counselorError && (
+                  <div className="text-[11px] text-red-600 mt-1">{counselorError}</div>
+                )}
               </div>
             </div>
 
@@ -336,7 +444,7 @@ export default function CounselorDashboard() {
               <div className="pt-3 border-t mt-3">
                 <Link
                   to="/"
-                  className="block px-3 py-2 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-50"
+                  className="block px-3 py-2 rounded-xl text-sm font-medium text-[#5f6562] hover:bg-white/70"
                 >
                   ← Back to Home
                 </Link>
@@ -344,10 +452,10 @@ export default function CounselorDashboard() {
             </div>
           </div>
 
-          <div className="mt-4 bg-white rounded-2xl shadow-sm border p-4">
-            <div className="text-sm font-semibold text-gray-900">Daily Note</div>
-            <p className="text-xs text-gray-600 mt-1">{dailyMessage}</p>
-            <div className="mt-3 p-3 rounded-xl bg-[#FAFBFF] border text-xs text-gray-600">
+          <div className="mt-4 bg-white/80 backdrop-blur rounded-2xl shadow-sm border border-white/60 p-4">
+            <div className="text-sm font-semibold text-[#1c2b2d]">Daily Note</div>
+            <p className="text-xs text-[#6b6f6a] mt-1">{dailyMessage}</p>
+            <div className="mt-3 p-3 rounded-xl bg-white/70 border border-[#e4ddd2] text-xs text-[#5f6562]">
               💡 {pickMotivation()}
             </div>
           </div>
@@ -365,29 +473,41 @@ export default function CounselorDashboard() {
                 <StatCard label="Avg Rating" value={analytics.avgRating} />
               </div>
 
-              <div className="bg-white rounded-2xl shadow-sm border p-5">
+              <div className="bg-white/80 backdrop-blur rounded-2xl shadow-sm border border-white/60 p-5">
                 <div className="flex items-center justify-between">
                   <div>
-                    <div className="text-lg font-semibold text-gray-900">Today’s Sessions</div>
-                    <div className="text-sm text-gray-500">Quick view of today’s schedule</div>
+                    <div className="text-lg font-semibold text-[#1c2b2d]" style={{ fontFamily: "'Fraunces', serif" }}>
+                      Today’s Sessions
+                    </div>
+                    <div className="text-sm text-[#6b6f6a]">Quick view of today’s schedule</div>
                   </div>
                   <button
                     onClick={() => setActiveTab("sessions")}
-                    className="px-4 py-2 rounded-xl border text-sm font-semibold hover:bg-gray-50"
+                    className="px-4 py-2 rounded-xl border border-[#e4ddd2] text-sm font-semibold hover:bg-white/70"
                   >
                     Manage Sessions
                   </button>
                 </div>
 
                 <div className="mt-4 space-y-3">
-                  {groupedSessions.today.map((s) => (
+                  {sessionsLoading && (
+                    <div className="text-sm text-[#6b6f6a]">Loading sessions...</div>
+                  )}
+                  {!sessionsLoading && sessionsError && (
+                    <div className="text-sm text-red-600">{sessionsError}</div>
+                  )}
+                  {!sessionsLoading && !sessionsError && groupedSessions.today.length === 0 && (
+                    <div className="text-sm text-[#6b6f6a]">No sessions scheduled.</div>
+                  )}
+                  {!sessionsLoading && !sessionsError && groupedSessions.today.map((s) => (
                     <div
                       key={s.id}
-                      className="p-4 rounded-2xl border bg-[#FAFBFF] flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"
+                      className="p-4 rounded-2xl border border-[#e4ddd2] bg-white/60 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"
+                      onClick={() => setSelectedSessionId(s.id)}
                     >
                       <div className="min-w-0">
-                        <div className="font-semibold text-gray-900 truncate">{s.patient}</div>
-                        <div className="text-xs text-gray-500">
+                        <div className="font-semibold text-[#1c2b2d] truncate">{s.patient}</div>
+                        <div className="text-xs text-[#6b6f6a]">
                           {s.time} • {s.type} • {s.topic}
                         </div>
                       </div>
@@ -398,13 +518,13 @@ export default function CounselorDashboard() {
                           <>
                             <button
                               onClick={() => handleAccept(s.id)}
-                              className="px-3 py-2 rounded-xl bg-[#215C4C] text-white text-xs font-semibold hover:opacity-95"
+                              className="px-3 py-2 rounded-xl bg-[#0f2d2b] text-white text-xs font-semibold hover:opacity-95"
                             >
                               Accept
                             </button>
                             <button
                               onClick={() => handleDecline(s.id)}
-                              className="px-3 py-2 rounded-xl border text-xs font-semibold hover:bg-gray-50"
+                              className="px-3 py-2 rounded-xl border border-[#e4ddd2] text-xs font-semibold hover:bg-white/70"
                             >
                               Decline
                             </button>
@@ -413,8 +533,11 @@ export default function CounselorDashboard() {
 
                         {s.type === "Chat" && s.status !== "Declined" && (
                           <button
-                            onClick={() => setActiveTab("interaction")}
-                            className="px-3 py-2 rounded-xl bg-[#215C4C] text-white text-xs font-semibold hover:opacity-95"
+                            onClick={() => {
+                              setSelectedSessionId(s.id);
+                              setActiveTab("interaction");
+                            }}
+                            className="px-3 py-2 rounded-xl bg-[#0f2d2b] text-white text-xs font-semibold hover:opacity-95"
                           >
                             Join Chat
                           </button>
@@ -422,8 +545,8 @@ export default function CounselorDashboard() {
 
                         {s.type === "Video" && s.status !== "Declined" && (
                           <button
-                            className="px-3 py-2 rounded-xl border text-xs font-semibold hover:bg-gray-50"
-                            title="Later connect this to Jitsi"
+                            onClick={() => setSelectedSessionId(s.id)}
+                            className="px-3 py-2 rounded-xl border border-[#e4ddd2] text-xs font-semibold hover:bg-white/70"
                           >
                             Join Video
                           </button>
@@ -447,6 +570,12 @@ export default function CounselorDashboard() {
 
                 {/* Calendar style sections */}
                 <div className="mt-5 space-y-6">
+                  {sessionsLoading && (
+                    <div className="text-sm text-[#6b6f6a]">Loading sessions...</div>
+                  )}
+                  {!sessionsLoading && sessionsError && (
+                    <div className="text-sm text-red-600">{sessionsError}</div>
+                  )}
                   <SessionGroup
                     title="Today"
                     items={groupedSessions.today}
@@ -455,6 +584,8 @@ export default function CounselorDashboard() {
                     onOpenChat={() => setActiveTab("interaction")}
                     onOpenSummary={openSummaryModal}
                     updateSessionField={updateSessionField}
+                    onSelect={setSelectedSessionId}
+                    onPersistField={persistSessionField}
                   />
 
                   {groupedSessions.other.length > 0 && (
@@ -466,6 +597,8 @@ export default function CounselorDashboard() {
                       onOpenChat={() => setActiveTab("interaction")}
                       onOpenSummary={openSummaryModal}
                       updateSessionField={updateSessionField}
+                      onSelect={setSelectedSessionId}
+                      onPersistField={persistSessionField}
                     />
                   )}
                 </div>
@@ -492,24 +625,35 @@ export default function CounselorDashboard() {
                   <div className="bg-white border rounded-2xl p-4">
                     <div className="text-sm font-semibold text-gray-900">Client Snapshot</div>
                     <div className="text-xs text-gray-500 mt-1">
-                      Select a session in “Session Management” to view detailed info (demo).
+                      Select a session in “Session Management” to view detailed info.
                     </div>
 
                     <div className="mt-4 space-y-3">
-                      {sessions.slice(0, 3).map((s) => (
-                        <div key={s.id} className="p-3 rounded-xl border bg-[#FAFBFF]">
-                          <div className="font-semibold text-sm text-gray-900">{s.patient}</div>
+                      {sessionsLoading && (
+                        <div className="text-xs text-[#6b6f6a]">Loading session details...</div>
+                      )}
+                      {!sessionsLoading && sessionsError && (
+                        <div className="text-xs text-red-600">{sessionsError}</div>
+                      )}
+                      {!sessionsLoading && !sessionsError && !selectedSession && (
+                        <div className="text-xs text-[#6b6f6a]">No session selected.</div>
+                      )}
+                      {!sessionsLoading && !sessionsError && selectedSession && (
+                        <div className="p-3 rounded-xl border bg-[#FAFBFF]">
+                          <div className="font-semibold text-sm text-gray-900">
+                            {selectedSession.patient}
+                          </div>
                           <div className="text-xs text-gray-500">
-                            {s.type} • {s.topic}
+                            {selectedSession.type} • {selectedSession.topic}
                           </div>
 
                           <div className="mt-2">
-                            {s.quizShared && s.quiz ? (
+                            {selectedSession.quizShared && selectedSession.quiz ? (
                               <div className="text-xs">
                                 <div className="font-semibold text-gray-700 mb-2">Quiz Results</div>
-                                <QuizBar label="Stress" value={s.quiz.stress} />
-                                <QuizBar label="Anxiety" value={s.quiz.anxiety} />
-                                <QuizBar label="Sleep" value={s.quiz.sleep} />
+                                <QuizBar label="Stress" value={selectedSession.quiz.stress} />
+                                <QuizBar label="Anxiety" value={selectedSession.quiz.anxiety} />
+                                <QuizBar label="Sleep" value={selectedSession.quiz.sleep} />
                               </div>
                             ) : (
                               <div className="text-xs text-gray-500">
@@ -520,20 +664,19 @@ export default function CounselorDashboard() {
 
                           <div className="mt-3 flex gap-2">
                             <button
-                              onClick={() => openSummaryModal(s.id)}
-                              className="px-3 py-2 rounded-xl bg-[#215C4C] text-white text-xs font-semibold hover:opacity-95"
+                              onClick={() => openSummaryModal(selectedSession.id)}
+                              className="px-3 py-2 rounded-xl bg-[#0f2d2b] text-white text-xs font-semibold hover:opacity-95"
                             >
                               Secure Summary
                             </button>
                             <button
-                              className="px-3 py-2 rounded-xl border text-xs font-semibold hover:bg-gray-50"
-                              title="Later connect to video room (Jitsi)"
+                              className="px-3 py-2 rounded-xl border border-[#e4ddd2] text-xs font-semibold hover:bg-white/70"
                             >
                               Video Room
                             </button>
                           </div>
                         </div>
-                      ))}
+                      )}
                     </div>
                   </div>
                 </div>
@@ -560,7 +703,7 @@ export default function CounselorDashboard() {
                   <div className="border rounded-2xl p-4 bg-[#FAFBFF]">
                     <div className="text-sm font-semibold text-gray-900">Mood Trends</div>
                     <div className="text-xs text-gray-500 mb-3">
-                      Based on shared client quizzes (demo)
+                      Based on shared client quizzes
                     </div>
                     <div className="space-y-3">
                       {analytics.moodTrends.map((t) => (
@@ -596,18 +739,24 @@ export default function CounselorDashboard() {
                   <div className="border rounded-2xl p-4 bg-[#FAFBFF]">
                     <div className="text-sm font-semibold text-gray-900">Personal Notes</div>
                     <div className="text-xs text-gray-500 mb-2">
-                      Private notes (saved in localStorage for now)
+                      Private notes
                     </div>
+                    {notesLoading && (
+                      <div className="text-xs text-[#6b6f6a] mb-2">Loading notes...</div>
+                    )}
+                    {!notesLoading && notesError && (
+                      <div className="text-xs text-red-600 mb-2">{notesError}</div>
+                    )}
                     <textarea
                       value={personalNotes}
                       onChange={(e) => setPersonalNotes(e.target.value)}
-                      className="w-full min-h-[140px] rounded-xl border p-3 text-sm outline-none focus:ring-2 focus:ring-[#215C4C]/20"
+                      className="w-full min-h-[140px] rounded-xl border p-3 text-sm outline-none focus:ring-2 focus:ring-[#0f2d2b]/20"
                       placeholder="Write reminders, therapy plans, follow-up ideas..."
                     />
                     <div className="mt-3 flex justify-end">
                       <button
                         onClick={savePersonalNotes}
-                        className="px-4 py-2 rounded-xl bg-[#215C4C] text-white text-sm font-semibold hover:opacity-95"
+                        className="px-4 py-2 rounded-xl bg-[#0f2d2b] text-white text-sm font-semibold hover:opacity-95"
                       >
                         Save Notes
                       </button>
@@ -618,8 +767,14 @@ export default function CounselorDashboard() {
                   <div className="border rounded-2xl p-4 bg-[#FAFBFF]">
                     <div className="text-sm font-semibold text-gray-900">Therapy Materials</div>
                     <div className="text-xs text-gray-500 mb-2">
-                      Upload worksheets, exercises, PDFs (UI only)
+                      Upload worksheets, exercises, PDFs
                     </div>
+                    {materialsLoading && (
+                      <div className="text-xs text-[#6b6f6a] mb-2">Loading materials...</div>
+                    )}
+                    {!materialsLoading && materialsError && (
+                      <div className="text-xs text-red-600 mb-2">{materialsError}</div>
+                    )}
 
                     <label className="block">
                       <input
@@ -633,17 +788,20 @@ export default function CounselorDashboard() {
                     </label>
 
                     <div className="mt-3 space-y-2">
-                      {materials.map((m) => (
+                      {!materialsLoading && !materialsError && materials.length === 0 && (
+                        <div className="text-xs text-[#6b6f6a]">No materials uploaded yet.</div>
+                      )}
+                      {materials.map((m, idx) => (
                         <div
-                          key={m.id}
+                          key={m.id || m.uuid || m._id || m.name || idx}
                           className="flex items-center justify-between p-3 rounded-xl border bg-white"
                         >
                           <div className="min-w-0">
                             <div className="text-sm font-semibold text-gray-900 truncate">
-                              {m.title}
+                              {m.title || m.name || "Untitled"}
                             </div>
                             <div className="text-xs text-gray-500">
-                              {m.type} • {m.uploadedAt}
+                              {m.type || m.file_type || "FILE"} • {m.uploadedAt || m.created_at || ""}
                             </div>
                           </div>
                           <button className="px-3 py-2 rounded-xl border text-xs font-semibold hover:bg-gray-50">
@@ -659,14 +817,23 @@ export default function CounselorDashboard() {
                 <div className="mt-4 border rounded-2xl p-4 bg-[#FAFBFF]">
                   <div className="text-sm font-semibold text-gray-900">Shared Educational Content</div>
                   <div className="text-xs text-gray-500 mb-3">
-                    Content available inside MannSathi for all counselors (demo)
+                    Content available inside MannSathi for all counselors 
                   </div>
+                  {sharedContentLoading && (
+                    <div className="text-xs text-[#6b6f6a] mb-3">Loading content...</div>
+                  )}
+                  {!sharedContentLoading && sharedContentError && (
+                    <div className="text-xs text-red-600 mb-3">{sharedContentError}</div>
+                  )}
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                    {sharedContent.map((c) => (
-                      <div key={c.id} className="p-3 rounded-xl border bg-white">
-                        <div className="text-sm font-semibold text-gray-900">{c.title}</div>
-                        <div className="text-xs text-gray-500">{c.tag}</div>
-                        <button className="mt-3 w-full px-3 py-2 rounded-xl bg-[#215C4C] text-white text-xs font-semibold hover:opacity-95">
+                    {!sharedContentLoading && !sharedContentError && sharedContent.length === 0 && (
+                      <div className="text-xs text-[#6b6f6a]">No shared content available.</div>
+                    )}
+                    {sharedContent.map((c, idx) => (
+                      <div key={c.id || c.uuid || c._id || c.title || idx} className="p-3 rounded-xl border bg-white">
+                        <div className="text-sm font-semibold text-gray-900">{c.title || c.name}</div>
+                        <div className="text-xs text-gray-500">{c.tag || c.category}</div>
+                        <button className="mt-3 w-full px-3 py-2 rounded-xl bg-[#0f2d2b] text-white text-xs font-semibold hover:opacity-95">
                           Open
                         </button>
                       </div>
@@ -695,7 +862,7 @@ export default function CounselorDashboard() {
                       <input
                         value={profile.specialization}
                         onChange={(e) => setProfile((p) => ({ ...p, specialization: e.target.value }))}
-                        className="w-full rounded-xl border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#215C4C]/20"
+                        className="w-full rounded-xl border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#0f2d2b]/20"
                         placeholder="e.g., Clinical Psychologist, Anxiety Specialist"
                       />
                     </label>
@@ -705,7 +872,7 @@ export default function CounselorDashboard() {
                       <input
                         value={profile.availableHours}
                         onChange={(e) => setProfile((p) => ({ ...p, availableHours: e.target.value }))}
-                        className="w-full rounded-xl border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#215C4C]/20"
+                        className="w-full rounded-xl border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#0f2d2b]/20"
                         placeholder="e.g., 10:00 AM - 5:00 PM"
                       />
                     </label>
@@ -715,7 +882,7 @@ export default function CounselorDashboard() {
                       <textarea
                         value={profile.bio}
                         onChange={(e) => setProfile((p) => ({ ...p, bio: e.target.value }))}
-                        className="w-full min-h-[120px] rounded-xl border p-3 text-sm outline-none focus:ring-2 focus:ring-[#215C4C]/20"
+                        className="w-full min-h-[120px] rounded-xl border p-3 text-sm outline-none focus:ring-2 focus:ring-[#0f2d2b]/20"
                         placeholder="Write your professional bio..."
                       />
                     </label>
@@ -732,8 +899,8 @@ export default function CounselorDashboard() {
                       <input
                         value={profile.payoutInfo}
                         onChange={(e) => setProfile((p) => ({ ...p, payoutInfo: e.target.value }))}
-                        className="w-full rounded-xl border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#215C4C]/20"
-                        placeholder="eSewa/Khalti/Bank details (demo)"
+                        className="w-full rounded-xl border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#0f2d2b]/20"
+                        placeholder="eSewa/Khalti/Bank details"
                       />
                     </label>
 
@@ -748,7 +915,7 @@ export default function CounselorDashboard() {
                     <div className="mt-4 flex justify-end">
                       <button
                         onClick={saveProfile}
-                        className="px-4 py-2 rounded-xl bg-[#215C4C] text-white text-sm font-semibold hover:opacity-95"
+                        className="px-4 py-2 rounded-xl bg-[#0f2d2b] text-white text-sm font-semibold hover:opacity-95"
                       >
                         Save Settings
                       </button>
@@ -773,7 +940,7 @@ export default function CounselorDashboard() {
             <textarea
               value={summaryModal.summary}
               onChange={(e) => setSummaryModal((p) => ({ ...p, summary: e.target.value }))}
-              className="w-full min-h-[160px] rounded-xl border p-3 text-sm outline-none focus:ring-2 focus:ring-[#215C4C]/20"
+              className="w-full min-h-[160px] rounded-xl border p-3 text-sm outline-none focus:ring-2 focus:ring-[#0f2d2b]/20"
               placeholder="Write a short professional summary (confidential)."
             />
           </div>
@@ -787,7 +954,7 @@ export default function CounselorDashboard() {
             </button>
             <button
               onClick={saveSecureSummary}
-              className="px-4 py-2 rounded-xl bg-[#215C4C] text-white text-sm font-semibold hover:opacity-95"
+              className="px-4 py-2 rounded-xl bg-[#0f2d2b] text-white text-sm font-semibold hover:opacity-95"
             >
               Save Summary
             </button>
@@ -806,7 +973,7 @@ function SideBtn({ active, onClick, children }) {
       onClick={onClick}
       className={[
         "w-full text-left px-3 py-2 rounded-xl text-sm font-semibold transition",
-        active ? "bg-[#215C4C] text-white" : "text-gray-700 hover:bg-gray-50",
+        active ? "bg-[#0f2d2b] text-white" : "text-[#5f6562] hover:bg-white/70",
       ].join(" ")}
     >
       {children}
@@ -816,9 +983,11 @@ function SideBtn({ active, onClick, children }) {
 
 function StatCard({ label, value }) {
   return (
-    <div className="bg-white rounded-2xl shadow-sm border p-4">
-      <div className="text-xs text-gray-500">{label}</div>
-      <div className="text-2xl font-bold text-gray-900 mt-1">{value}</div>
+    <div className="bg-white/80 backdrop-blur rounded-2xl shadow-sm border border-white/60 p-4">
+      <div className="text-xs text-[#7c7b77]">{label}</div>
+      <div className="text-2xl font-bold text-[#1c2b2d] mt-1" style={{ fontFamily: "'Fraunces', serif" }}>
+        {value}
+      </div>
     </div>
   );
 }
@@ -836,20 +1005,34 @@ function Badge({ status }) {
   return <span className={`px-3 py-1 rounded-full text-xs font-semibold ${cls}`}>{status}</span>;
 }
 
-function SessionGroup({ title, items, onAccept, onDecline, onOpenChat, onOpenSummary, updateSessionField }) {
+function SessionGroup({
+  title,
+  items,
+  onAccept,
+  onDecline,
+  onOpenChat,
+  onOpenSummary,
+  updateSessionField,
+  onSelect,
+  onPersistField,
+}) {
   return (
     <div>
-      <div className="text-sm font-semibold text-gray-900">{title}</div>
+      <div className="text-sm font-semibold text-[#1c2b2d]">{title}</div>
       <div className="mt-3 space-y-3">
         {items.length === 0 ? (
-          <div className="text-sm text-gray-500">No sessions.</div>
+          <div className="text-sm text-[#6b6f6a]">No sessions.</div>
         ) : (
           items.map((s) => (
-            <div key={s.id} className="p-4 rounded-2xl border bg-[#FAFBFF]">
+            <div
+              key={s.id}
+              className="p-4 rounded-2xl border border-[#e4ddd2] bg-white/60"
+              onClick={() => onSelect?.(s.id)}
+            >
               <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
                 <div className="min-w-0">
-                  <div className="font-semibold text-gray-900">{s.patient}</div>
-                  <div className="text-xs text-gray-500">
+                  <div className="font-semibold text-[#1c2b2d]">{s.patient}</div>
+                  <div className="text-xs text-[#6b6f6a]">
                     {s.time} • {s.type} • {s.topic}
                   </div>
                 </div>
@@ -861,13 +1044,13 @@ function SessionGroup({ title, items, onAccept, onDecline, onOpenChat, onOpenSum
                     <>
                       <button
                         onClick={() => onAccept(s.id)}
-                        className="px-3 py-2 rounded-xl bg-[#215C4C] text-white text-xs font-semibold hover:opacity-95"
+                        className="px-3 py-2 rounded-xl bg-[#0f2d2b] text-white text-xs font-semibold hover:opacity-95"
                       >
                         Accept
                       </button>
                       <button
                         onClick={() => onDecline(s.id)}
-                        className="px-3 py-2 rounded-xl border text-xs font-semibold hover:bg-gray-50"
+                        className="px-3 py-2 rounded-xl border border-[#e4ddd2] text-xs font-semibold hover:bg-white/70"
                       >
                         Decline
                       </button>
@@ -876,8 +1059,11 @@ function SessionGroup({ title, items, onAccept, onDecline, onOpenChat, onOpenSum
 
                   {s.status !== "Declined" && s.type === "Chat" && (
                     <button
-                      onClick={onOpenChat}
-                      className="px-3 py-2 rounded-xl bg-[#215C4C] text-white text-xs font-semibold hover:opacity-95"
+                      onClick={() => {
+                        onSelect?.(s.id);
+                        onOpenChat();
+                      }}
+                      className="px-3 py-2 rounded-xl bg-[#0f2d2b] text-white text-xs font-semibold hover:opacity-95"
                     >
                       Join Chat
                     </button>
@@ -885,16 +1071,18 @@ function SessionGroup({ title, items, onAccept, onDecline, onOpenChat, onOpenSum
 
                   {s.status !== "Declined" && s.type === "Video" && (
                     <button
-                      className="px-3 py-2 rounded-xl border text-xs font-semibold hover:bg-gray-50"
-                      title="Later connect to Jitsi"
+                      className="px-3 py-2 rounded-xl border border-[#e4ddd2] text-xs font-semibold hover:bg-white/70"
                     >
                       Join Video
                     </button>
                   )}
 
                   <button
-                    onClick={() => onOpenSummary(s.id)}
-                    className="px-3 py-2 rounded-xl border text-xs font-semibold hover:bg-gray-50"
+                    onClick={() => {
+                      onSelect?.(s.id);
+                      onOpenSummary(s.id);
+                    }}
+                    className="px-3 py-2 rounded-xl border border-[#e4ddd2] text-xs font-semibold hover:bg-white/70"
                   >
                     Secure Summary
                   </button>
@@ -908,7 +1096,8 @@ function SessionGroup({ title, items, onAccept, onDecline, onOpenChat, onOpenSum
                   <textarea
                     value={s.notes || ""}
                     onChange={(e) => updateSessionField(s.id, "notes", e.target.value)}
-                    className="w-full rounded-xl border p-3 text-sm outline-none focus:ring-2 focus:ring-[#215C4C]/20"
+                    onBlur={(e) => onPersistField?.(s.id, "notes", e.target.value)}
+                    className="w-full rounded-xl border p-3 text-sm outline-none focus:ring-2 focus:ring-[#0f2d2b]/20"
                     placeholder="Write session notes..."
                   />
                 </div>
@@ -917,7 +1106,8 @@ function SessionGroup({ title, items, onAccept, onDecline, onOpenChat, onOpenSum
                   <textarea
                     value={s.feedback || ""}
                     onChange={(e) => updateSessionField(s.id, "feedback", e.target.value)}
-                    className="w-full rounded-xl border p-3 text-sm outline-none focus:ring-2 focus:ring-[#215C4C]/20"
+                    onBlur={(e) => onPersistField?.(s.id, "feedback", e.target.value)}
+                    className="w-full rounded-xl border p-3 text-sm outline-none focus:ring-2 focus:ring-[#0f2d2b]/20"
                     placeholder="Write feedback / next steps..."
                   />
                 </div>
@@ -939,7 +1129,7 @@ function QuizBar({ label, value }) {
         <span className="font-semibold">{value}/10</span>
       </div>
       <div className="h-2 rounded-full bg-gray-200 overflow-hidden">
-        <div className="h-full bg-[#215C4C]" style={{ width: `${pct}%` }} />
+        <div className="h-full bg-[#0f2d2b]" style={{ width: `${pct}%` }} />
       </div>
     </div>
   );
@@ -954,7 +1144,7 @@ function TrendBar({ label, value }) {
         <span className="font-semibold">{pct}%</span>
       </div>
       <div className="h-2 rounded-full bg-gray-200 overflow-hidden">
-        <div className="h-full bg-[#215C4C]" style={{ width: `${pct}%` }} />
+        <div className="h-full bg-[#0f2d2b]" style={{ width: `${pct}%` }} />
       </div>
     </div>
   );
@@ -964,7 +1154,7 @@ function Modal({ children, onClose }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative w-full max-w-xl bg-white rounded-2xl shadow-lg border p-5">
+      <div className="relative w-full max-w-xl bg-white rounded-2xl shadow-lg border border-[#e4ddd2] p-5">
         {children}
       </div>
     </div>
@@ -972,11 +1162,5 @@ function Modal({ children, onClose }) {
 }
 
 function pickMotivation() {
-  const list = [
-    "Be present. A calm counselor creates a calm client.",
-    "Progress is not linear — keep showing up.",
-    "Small support today can change someone’s life tomorrow.",
-    "Listen more than you speak. People heal when they feel heard.",
-  ];
-  return list[Math.floor(Math.random() * list.length)];
+  return "No announcements yet.";
 }

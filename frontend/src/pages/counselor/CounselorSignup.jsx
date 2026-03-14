@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
+import api from "../../utils/api";
 
 export default function CounselorSignup() {
   const navigate = useNavigate();
@@ -56,27 +57,11 @@ export default function CounselorSignup() {
         payload.append(key, value);
       });
 
-      const res = await fetch("http://127.0.0.1:8000/api/register-counselor", {
-        method: "POST",
+      const { data } = await api.post("/register-counselor", payload, {
         headers: {
-          Accept: "application/json",
-          // ❗ Do NOT set Content-Type manually for FormData
+          "Content-Type": "multipart/form-data",
         },
-        body: payload,
       });
-
-      const data = await res.json().catch(() => ({}));
-
-      if (!res.ok) {
-        // Laravel validation (422)
-        if (data?.errors) {
-          const firstField = Object.keys(data.errors)[0];
-          setError(data.errors[firstField]?.[0] || "Validation error.");
-        } else {
-          setError(data?.message || "Signup failed. Please try again.");
-        }
-        return;
-      }
 
       alert(
         "Counselor account created successfully. Your account is pending verification by the hospital."
@@ -84,9 +69,14 @@ export default function CounselorSignup() {
       navigate("/counselor/login", { replace: true });
     } catch (err) {
       console.error("SIGNUP ERROR:", err);
-      setError(
-        "Backend not reachable (or CORS blocked). Please check Laravel is running at http://127.0.0.1:8000 and CORS config."
-      );
+      if (err.response?.data?.errors) {
+        const firstField = Object.keys(err.response.data.errors)[0];
+        setError(err.response.data.errors[firstField]?.[0] || "Validation error.");
+      } else if (err.response?.data?.message) {
+        setError(err.response.data.message);
+      } else {
+        setError("Signup failed. Please check your connection and try again.");
+      }
     } finally {
       setLoading(false);
     }

@@ -73,7 +73,6 @@ function Home() {
         <section className="mx-auto max-w-6xl grid grid-cols-1 md:grid-cols-2 gap-12 items-center">
           {/* Left */}
           <div className="md:pl-2">
-            {/* small label */}
             <div className="inline-flex items-center gap-2 rounded-full border border-[#e8e8e8] bg-white px-4 py-2 text-xs text-neutral-700">
               <span className="h-2 w-2 rounded-full bg-[#215c4c]" />
               Private, supportive mental health care
@@ -166,8 +165,10 @@ function Home() {
             <div className="relative">
               <div className="absolute -inset-8 rounded-[40%] bg-[#ffe1d6]/40 blur-2xl" />
 
-              <div className="relative h-[340px] w-[340px] rounded-[36%] bg-white border border-[#f0f0f0]
-                              shadow-[0_18px_50px_rgba(0,0,0,0.08)] flex items-center justify-center">
+              <div
+                className="relative h-[340px] w-[340px] rounded-[36%] bg-white border border-[#f0f0f0]
+                              shadow-[0_18px_50px_rgba(0,0,0,0.08)] flex items-center justify-center"
+              >
                 <div className="h-[310px] w-[310px] rounded-[36%] bg-[#fff7f3] overflow-hidden border border-[#f2e7df]">
                   <img
                     src="/src/assets/avatar1.jpg"
@@ -176,9 +177,10 @@ function Home() {
                   />
                 </div>
 
-                {/* small info card */}
-                <div className="absolute -bottom-6 left-8 rounded-2xl bg-white border border-[#f0f0f0]
-                                shadow-[0_16px_45px_rgba(0,0,0,0.10)] px-5 py-4 w-64">
+                <div
+                  className="absolute -bottom-6 left-8 rounded-2xl bg-white border border-[#f0f0f0]
+                                shadow-[0_16px_45px_rgba(0,0,0,0.10)] px-5 py-4 w-64"
+                >
                   <p className="text-xs text-neutral-500">Today</p>
                   <p className="mt-1 text-sm font-semibold text-neutral-900 leading-snug">
                     A small step is still a step.
@@ -205,7 +207,7 @@ function Home() {
           </div>
         </section>
 
-        {/* TOPICS (premium minimal cards) */}
+        {/* TOPICS */}
         <section className="mx-auto max-w-6xl mt-18 md:mt-20">
           <div className="flex items-end justify-between gap-6 flex-wrap">
             <div>
@@ -248,8 +250,30 @@ function Home() {
           </div>
         </section>
 
-        {/* FINAL CTA (simple, minimal) */}
-        <section className="mx-auto max-w-6xl mt-20">
+        {/* SIMPLE QUIZ SECTION (ABOVE FINAL CTA) */}
+        <section className="mx-auto max-w-6xl mt-16">
+          <div className="rounded-3xl border border-[#f0f0f0] bg-white px-8 md:px-12 py-10 flex flex-col md:flex-row md:items-center md:justify-between gap-6">
+            <div className="max-w-xl">
+              <h3 className="text-xl md:text-2xl font-serif text-neutral-900">
+                Not sure where to start?
+              </h3>
+              <p className="mt-2 text-sm text-neutral-600 leading-relaxed">
+                Take a short wellbeing quiz to get a gentle direction. Not a diagnosis.
+              </p>
+            </div>
+
+            <Link
+              to="/quiz"
+              className="inline-flex items-center rounded-full bg-[#215c4c] text-white
+                         px-7 py-2.5 text-sm font-semibold shadow-sm hover:shadow-md transition"
+            >
+              Take the quiz
+            </Link>
+          </div>
+        </section>
+
+        {/* FINAL CTA */}
+        <section className="mx-auto max-w-6xl mt-16">
           <div className="rounded-3xl border border-[#e6efe9] bg-[#e3f3e6] px-8 md:px-12 py-10 flex flex-col md:flex-row md:items-center md:justify-between gap-6">
             <div>
               <h3 className="text-xl md:text-2xl font-serif text-neutral-900">

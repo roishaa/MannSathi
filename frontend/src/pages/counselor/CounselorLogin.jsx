@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
+import api from "../../utils/api";
 
 export default function CounselorLogin() {
   const navigate = useNavigate();
@@ -18,33 +19,20 @@ export default function CounselorLogin() {
     setLoading(true);
 
     try {
-      const res = await fetch("http://localhost:8000/api/counselor/login", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json",
-        },
-        body: JSON.stringify(form),
-      });
+      const { data } = await api.post("/counselor/login", form);
 
-      // ✅ IMPORTANT: parse JSON only once
-      const data = await res.json().catch(() => ({}));
-
-      if (!res.ok) {
-        throw new Error(data.message || "Login failed");
-      }
-
-      // Backend returns 'counselor', not 'user'
       if (!data?.counselor) {
         throw new Error("Invalid response from server.");
       }
 
+      console.log("Counselor login successful, token:", data.token);
       localStorage.setItem("auth_token", data.token);
       localStorage.setItem("user", JSON.stringify({ ...data.counselor, role: data.role }));
 
       navigate("/counselor/dashboard");
     } catch (err) {
-      setError(err.message || "Something went wrong.");
+      console.error("Counselor login error:", err);
+      setError(err.response?.data?.message || err.message || "Something went wrong.");
     } finally {
       setLoading(false);
     }

@@ -1,50 +1,13 @@
 <?php
 
+
 namespace App\Models;
 
-use Illuminate\Http\Request;
-use App\Models\MoodEntry;
-use Carbon\Carbon;
+use Illuminate\Database\Eloquent\Model;
 
 class MoodEntry extends Model
 {
-    protected $fillable = ['user_id', 'mood', 'note'];
-}
-class MoodController extends Controller
-{
-    public function store(Request $request)
-    {
-        $request->validate([
-            'mood' => 'required|string',
-            'note' => 'nullable|string',
-        ]);
+    protected $table = 'mood_entries';
 
-        MoodEntry::create([
-            'user_id' => auth()->id(),
-            'mood' => $request->mood,
-            'note' => $request->note,
-        ]);
-
-        return response()->json(['message' => 'Mood saved']);
-    }
-
-    public function weekly()
-    {
-        return MoodEntry::where('user_id', auth()->id())
-            ->whereBetween('created_at', [
-                Carbon::now()->startOfWeek(),
-                Carbon::now()->endOfWeek(),
-            ])
-            ->get();
-    }
-
-    public function lastWeek()
-    {
-        return MoodEntry::where('user_id', auth()->id())
-            ->whereBetween('created_at', [
-                Carbon::now()->subWeek()->startOfWeek(),
-                Carbon::now()->subWeek()->endOfWeek(),
-            ])
-            ->get();
-    }
+    protected $fillable = ['user_id', 'mood', 'mood_score', 'note'];
 }

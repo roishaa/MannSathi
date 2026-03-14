@@ -1,10 +1,12 @@
 import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import api from "../../utils/api";
 
 export default function MoodCheckIn() {
   const navigate = useNavigate();
   const [mood, setMood] = useState(null);
   const [note, setNote] = useState("");
+  const [saving, setSaving] = useState(false);
 
   const moods = [
     { key: "great", label: "Great", emoji: "😄", color: "bg-[#e3f3e6]" },
@@ -14,24 +16,35 @@ export default function MoodCheckIn() {
     { key: "anxious", label: "Anxious", emoji: "😣", color: "bg-[#efe6ff]" },
   ];
 
- const handleSubmit = async () => {
-  try {
-    await fetch("http://localhost:8000/api/mood", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
-      },
-      body: JSON.stringify({ mood, note }),
-    });
+  const handleSubmit = async () => {
+    if (!mood) return;
+    
+    setSaving(true);
+    try {
+      await api.post("/user/mood-entries", { 
+        mood, 
+        note: note.trim() || null 
+      });
 
-    // after saving mood → go back to dashboard
-    navigate("/dashboard");
-  } catch (error) {
-    console.error("Error saving mood:", error);
-    alert("Failed to save mood");
-  }
-};
+      // Navigate back to dashboard with refresh flag
+      navigate("/users/dashboard", { 
+        state: { refreshMood: Date.now() } 
+      });
+    } catch (error) {
+      console.error("Error saving mood:", error);
+      
+      // Handle specific error cases
+      if (error?.response?.status === 403) {
+        alert("Mood check-in is only available for users. Please log in with a user account.");
+        navigate("/");
+      } else {
+        const msg = error?.response?.data?.message || "Failed to save mood. Please try again.";
+        alert(msg);
+      }
+    } finally {
+      setSaving(false);
+    }
+  };
 
 
   return (
@@ -96,19 +109,19 @@ export default function MoodCheckIn() {
         <div className="flex flex-col sm:flex-row gap-4">
           <button
             onClick={handleSubmit}
-            disabled={!mood}
+            disabled={!mood || saving}
             className={`flex-1 rounded-full px-6 py-3 text-sm font-semibold transition
               ${
-                mood
+                mood && !saving
                   ? "bg-[#1f4e43] text-white hover:bg-[#173a32]"
                   : "bg-gray-200 text-gray-400 cursor-not-allowed"
               }`}
           >
-            Save check-in
+            {saving ? "Saving..." : "Save check-in"}
           </button>
 
           <Link
-            to="/dashboard"
+            to="/users/dashboard"
             className="flex-1 text-center rounded-full border border-[#1f4e43]
                        px-6 py-3 text-sm font-semibold text-[#1f4e43]
                        hover:bg-[#1f4e43] hover:text-white transition"

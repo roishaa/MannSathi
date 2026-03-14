@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MannSathi API Auth Debug Tool</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #f5f5f5;
+      padding: 20px;
+      color: #333;
+    }
+    .container { max-width: 900px; margin: 0 auto; }
+    h1 { color: #0f2d2b; margin-bottom: 20px; }
+    h2 { color: #1c2b2d; font-size: 18px; margin: 20px 0 10px; border-bottom: 2px solid #f4b860; padding-bottom: 5px; }
+    .card {
+      background: white;
+      border-radius: 8px;
+      padding: 20px;
+      margin-bottom: 15px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .section {
+      margin-bottom: 20px;
+      padding: 15px;
+      background: #f9f9f9;
+      border-left: 4px solid #0f2d2b;
+      border-radius: 4px;
+    }
+    button {
+      background: #0f2d2b;
+      color: white;
+      border: none;
+      padding: 10px 16px;
+      border-radius: 6px;
+      cursor: pointer;
+      margin: 5px 5px 5px 0;
+      font-weight: 500;
+      transition: opacity 0.2s;
+    }
+    button:hover { opacity: 0.9; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    button.secondary { background: #666; }
+    button.danger { background: #e74c3c; }
+    .status { padding: 10px; margin: 10px 0; border-radius: 4px; font-weight: 500; }
+    .status.success { background: #d4edda; color: #155724; }
+    .status.error { background: #f8d7da; color: #721c24; }
+    .status.info { background: #d1ecf1; color: #0c5460; }
+    .status.warning { background: #fff3cd; color: #856404; }
+    .code-block {
+      background: #f4f4f4;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      padding: 12px;
+      margin: 10px 0;
+      font-family: 'Courier New', monospace;
+      font-size: 12px;
+      overflow-x: auto;
+      max-height: 300px;
+      overflow-y: auto;
+    }
+    .test-result { margin: 10px 0; padding: 10px; background: #f0f0f0; border-radius: 4px; }
+    input[type="text"], input[type="password"], textarea {
+      width: 100%;
+      padding: 8px;
+      margin: 5px 0;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-family: monospace;
+      font-size: 14px;
+    }
+    textarea { min-height: 80px; resize: vertical; }
+    label { display: block; font-weight: 500; margin-top: 10px; margin-bottom: 5px; }
+    .badge {
+      display: inline-block;
+      padding: 4px 8px;
+      border-radius: 3px;
+      font-size: 11px;
+      font-weight: 600;
+      margin-right: 5px;
+    }
+    .badge.pass { background: #d4edda; color: #155724; }
+    .badge.fail { background: #f8d7da; color: #721c24; }
+    .loading { display: inline-block; animation: spin 1s linear infinite; }
+    @keyframes spin { 0% { transform: rotate(0); } 100% { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🔐 MannSathi API Authentication Debug Tool</h1>
+    <p style="margin-bottom: 20px; color: #666;">
+      This tool helps diagnose authentication issues with your API configuration.
+    </p>
+
+    <!-- Step 1: LocalStorage Check -->
+    <div class="card">
+      <h2>Step 1: Check LocalStorage</h2>
+      <div class="section">
+        <p>Verify your auth token is saved in localStorage.</p>
+        <button onclick="checkLocalStorage()">🔍 Check LocalStorage</button>
+        <div id="ls-output"></div>
+      </div>
+    </div>
+
+    <!-- Step 2: Bearer Token Test -->
+    <div class="card">
+      <h2>Step 2: Test Bearer Token (Public)</h2>
+      <div class="section">
+        <p>Test if the backend can extract your Bearer token from the Authorization header.</p>
+        <button onclick="testBearerToken()">🧪 Test Bearer Token</button>
+        <div id="bearer-output"></div>
+      </div>
+    </div>
+
+    <!-- Step 3: Protected Endpoint Test -->
+    <div class="card">
+      <h2>Step 3: Test Protected Endpoint</h2>
+      <div class="section">
+        <p>Test if the multi.auth middleware authenticates you correctly.</p>
+        <button onclick="testProtected()">🔒 Test Protected Endpoint</button>
+        <div id="protected-output"></div>
+      </div>
+    </div>
+
+    <!-- Step 4: Appointments API Test -->
+    <div class="card">
+      <h2>Step 4: Test Appointments API (Real API)</h2>
+      <div class="section">
+        <p>Test the actual POST /api/appointments endpoint.</p>
+        <label>Counselor ID:</label>
+        <input type="number" id="counselor_id" placeholder="1" value="1">
+        <label>Date & Time (YYYY-MM-DD HH:MM):</label>
+        <input type="text" id="datetime" placeholder="2026-02-15 14:00" value="2026-02-15 14:00">
+        <button onclick="testAppointment()">📅 Test Appointment Creation</button>
+        <div id="appointment-output"></div>
+      </div>
+    </div>
+
+    <!-- Step 5: Sessions API Test -->
+    <div class="card">
+      <h2>Step 5: Test Sessions API</h2>
+      <div class="section">
+        <button onclick="testSessions()">📋 Test GET /api/user/sessions</button>
+        <button onclick="testNextSession()">⏭️ Test GET /api/user/sessions/next</button>
+        <div id="sessions-output"></div>
+      </div>
+    </div>
+
+    <!-- Admin: Clear Cache & Restart -->
+    <div class="card">
+      <h2>Admin Actions</h2>
+      <div class="section">
+        <button class="secondary" onclick="clearAllStorage()">Clear All Storage</button>
+        <button class="danger" onclick="forceLogout()">Force Logout</button>
+        <div id="admin-output"></div>
+      </div>
+    </div>
+
+    <!-- Raw Request/Response Inspector -->
+    <div class="card">
+      <h2>Advanced: Raw Request Inspector</h2>
+      <div class="section">
+        <label>Endpoint:</label>
+        <input type="text" id="custom-endpoint" placeholder="/api/user/sessions" value="/api/user/sessions">
+        <label>Method:</label>
+        <select id="custom-method" style="width: 100%; padding: 8px; margin: 5px 0;">
+          <option>GET</option>
+          <option>POST</option>
+          <option>PATCH</option>
+          <option>DELETE</option>
+        </select>
+        <button onclick="customRequest()">📡 Send Request</button>
+        <div id="custom-output"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const API_BASE = "http://127.0.0.1:8000/api";
+
+    function log(elementId, message, type = 'info') {
+      const el = document.getElementById(elementId);
+      const statusClass = type === 'success' ? 'success' : type === 'error' ? 'error' : type === 'warning' ? 'warning' : 'info';
+      el.innerHTML += `<div class="status ${statusClass}">${message}</div>`;
+      el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+
+    function clearOutput(elementId) {
+      document.getElementById(elementId).innerHTML = '';
+    }
+
+    function checkLocalStorage() {
+      clearOutput('ls-output');
+      const token = localStorage.getItem('auth_token');
+      const user = localStorage.getItem('user');
+
+      if (!token) {
+        log('ls-output', '❌ No auth_token in localStorage', 'error');
+      } else {
+        log('ls-output', `✅ Token found (${token.length} characters)`, 'success');
+        log('ls-output', `Preview: ${token.substring(0, 30)}...`, 'info');
+      }
+
+      if (!user) {
+        log('ls-output', '❌ No user in localStorage', 'error');
+      } else {
+        try {
+          const userData = JSON.parse(user);
+          log('ls-output', `✅ User data found: ${userData.name} (${userData.email})`, 'success');
+        } catch (e) {
+          log('ls-output', '❌ User data is invalid JSON', 'error');
+        }
+      }
+    }
+
+    async function testBearerToken() {
+      clearOutput('bearer-output');
+      const token = localStorage.getItem('auth_token');
+
+      if (!token) {
+        log('bearer-output', '❌ No token found in localStorage. Please log in first.', 'error');
+        return;
+      }
+
+      try {
+        log('bearer-output', '⏳ Sending request...', 'info');
+        const response = await fetch(`${API_BASE}/debug/bearer`, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Accept': 'application/json',
+          }
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+          log('bearer-output', '✅ Bearer token extracted successfully!', 'success');
+          log('bearer-output', `User Model: ${data.authenticated_user.model_class}`, 'info');
+          log('bearer-output', `User Email: ${data.authenticated_user.email}`, 'info');
+          log('bearer-output', `Is User: ${data.authenticated_user.is_user}`, 'info');
+          log('bearer-output', `Is Counselor: ${data.authenticated_user.is_counselor}`, 'info');
+        } else {
+          log('bearer-output', `❌ Error: ${data.error}`, 'error');
+          log('bearer-output', JSON.stringify(data, null, 2), 'info');
+        }
+      } catch (e) {
+        log('bearer-output', `❌ Network error: ${e.message}`, 'error');
+      }
+    }
+
+    async function testProtected() {
+      clearOutput('protected-output');
+      const token = localStorage.getItem('auth_token');
+
+      if (!token) {
+        log('protected-output', '❌ No token found. Please log in first.', 'error');
+        return;
+      }
+
+      try {
+        log('protected-output', '⏳ Testing multi.auth middleware...', 'info');
+        const response = await fetch(`${API_BASE}/debug/protected`, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Accept': 'application/json',
+          }
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+          log('protected-output', '✅ Authenticated with multi.auth middleware!', 'success');
+          log('protected-output', `User ID: ${data.user.id}`, 'info');
+          log('protected-output', `User Email: ${data.user.email}`, 'info');
+        } else {
+          log('protected-output', `❌ ${response.status} Error:`, 'error');
+          log('protected-output', JSON.stringify(data, null, 2), 'info');
+        }
+      } catch (e) {
+        log('protected-output', `❌ Network error: ${e.message}`, 'error');
+      }
+    }
+
+    async function testAppointment() {
+      clearOutput('appointment-output');
+      const token = localStorage.getItem('auth_token');
+
+      if (!token) {
+        log('appointment-output', '❌ No token found. Please log in first.', 'error');
+        return;
+      }
+
+      const counselor_id = document.getElementById('counselor_id').value;
+      const datetime = document.getElementById('datetime').value;
+
+      try {
+        log('appointment-output', '⏳ Creating test appointment...', 'info');
+        const response = await fetch(`${API_BASE}/appointments`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            counselor_id: parseInt(counselor_id),
+            date_time: datetime,
+            type: 'chat',
+          })
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+          log('appointment-output', '✅ Appointment created successfully!', 'success');
+          log('appointment-output', JSON.stringify(data, null, 2), 'info');
+        } else {
+          log('appointment-output', `❌ ${response.status} Error: ${data.message || JSON.stringify(data)}`, 'error');
+        }
+      } catch (e) {
+        log('appointment-output', `❌ Network error: ${e.message}`, 'error');
+      }
+    }
+
+    async function testSessions() {
+      clearOutput('sessions-output');
+      const token = localStorage.getItem('auth_token');
+
+      if (!token) {
+        log('sessions-output', '❌ No token found. Please log in first.', 'error');
+        return;
+      }
+
+      try {
+        log('sessions-output', '⏳ Fetching sessions...', 'info');
+        const response = await fetch(`${API_BASE}/user/sessions`, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Accept': 'application/json',
+          }
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+          log('sessions-output', `✅ Sessions fetched (${Array.isArray(data) ? data.length : 0} sessions)`, 'success');
+          log('sessions-output', `<pre>${JSON.stringify(data, null, 2).substring(0, 500)}...</pre>`, 'info');
+        } else {
+          log('sessions-output', `❌ ${response.status} Error: ${data.message || JSON.stringify(data)}`, 'error');
+        }
+      } catch (e) {
+        log('sessions-output', `❌ Network error: ${e.message}`, 'error');
+      }
+    }
+
+    async function testNextSession() {
+      clearOutput('sessions-output');
+      const token = localStorage.getItem('auth_token');
+
+      if (!token) {
+        log('sessions-output', '❌ No token found. Please log in first.', 'error');
+        return;
+      }
+
+      try {
+        log('sessions-output', '⏳ Fetching next session...', 'info');
+        const response = await fetch(`${API_BASE}/user/sessions/next`, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Accept': 'application/json',
+          }
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+          log('sessions-output', '✅ Next session fetched', 'success');
+          log('sessions-output', `<pre>${JSON.stringify(data, null, 2)}</pre>`, 'info');
+        } else {
+          log('sessions-output', `❌ ${response.status} Error: ${data.message || JSON.stringify(data)}`, 'error');
+        }
+      } catch (e) {
+        log('sessions-output', `❌ Network error: ${e.message}`, 'error');
+      }
+    }
+
+    async function customRequest() {
+      clearOutput('custom-output');
+      const token = localStorage.getItem('auth_token');
+      const endpoint = document.getElementById('custom-endpoint').value;
+      const method = document.getElementById('custom-method').value;
+
+      if (!token) {
+        log('custom-output', '❌ No token found. Please log in first.', 'error');
+        return;
+      }
+
+      try {
+        log('custom-output', `⏳ Sending ${method} ${endpoint}...`, 'info');
+        const response = await fetch(`${API_BASE}${endpoint}`, {
+          method: method,
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+          }
+        });
+
+        const data = await response.json();
+        const statusBadge = response.ok ? '<span class="badge pass">PASS</span>' : '<span class="badge fail">FAIL</span>';
+
+        log('custom-output', `${statusBadge} ${response.status} ${response.statusText}`, 'info');
+        log('custom-output', `<div class="code-block">${JSON.stringify(data, null, 2)}</div>`, 'info');
+      } catch (e) {
+        log('custom-output', `❌ Network error: ${e.message}`, 'error');
+      }
+    }
+
+    function clearAllStorage() {
+      clearOutput('admin-output');
+      localStorage.clear();
+      sessionStorage.clear();
+      log('admin-output', '✅ All storage cleared', 'success');
+    }
+
+    function forceLogout() {
+      clearOutput('admin-output');
+      localStorage.removeItem('auth_token');
+      localStorage.removeItem('user');
+      log('admin-output', '✅ Force logout complete', 'warning');
+    }
+
+    // Auto-check on load
+    window.addEventListener('load', () => {
+      console.log('🚀 Debug tool loaded');
+      checkLocalStorage();
+    });
+  </script>
+</body>
+</html>

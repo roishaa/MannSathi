@@ -1,33 +1,14 @@
-import React, { useEffect, useMemo, useState } from "react";
+// src/pages/users/UserDashboard.jsx
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
+import api from "../../utils/api";
 
-/**
- * REAL-LIFE DASHBOARD BEHAVIOR (front-end only)
- * - Shows "Next session" as the main hero card
- * - Chat button is LOCKED unless session is Confirmed + counselor assigned
- * - Status chips are consistent: pending/confirmed/completed/cancelled
- * - Has Notifications feed (from localStorage) so it feels "real-time"
- * - Has empty-states + fallback demo data (only if localStorage empty)
- *
- * LocalStorage keys used:
- * - user: {name/full_name, email}
- * - moodHistory: [{ mood, note, date }]
- * - sessions: [{ id, counselor, counselorId, date, time, type, status, meetingLink }]
- * - notifications: [{ id, title, message, time, type }]
- */
 export default function UserDashboard() {
   const navigate = useNavigate();
   const location = useLocation();
 
   // mobile sidebar toggle
   const [open, setOpen] = useState(false);
-
-  // "real-time" refresh (poll localStorage every 3s)
-  const [tick, setTick] = useState(0);
-  useEffect(() => {
-    const t = setInterval(() => setTick((x) => x + 1), 3000);
-    return () => clearInterval(t);
-  }, []);
 
   /* =========================
       USER (from localStorage)
@@ -38,158 +19,123 @@ export default function UserDashboard() {
     } catch {
       return {};
     }
-  }, [tick]);
+  }, []);
 
-  const userName = user?.name || user?.full_name || "Roisha Maharjan";
+  const userName = user?.pseudonym || user?.name || user?.full_name || "LotusMind 🌸";
   const userEmail = user?.email || "user@email.com";
 
   /* =========================
-      MOOD HISTORY
+      MOOD (FROM BACKEND)
   ========================= */
-  const moodHistory = useMemo(() => {
+  const [moodItems, setMoodItems] = useState([]);
+  const [moodLoading, setMoodLoading] = useState(false);
+
+  const loadMood = async () => {
+    setMoodLoading(true);
     try {
-      return JSON.parse(localStorage.getItem("moodHistory")) || [];
-    } catch {
-      return [];
-    }
-  }, [tick]);
-
-  const todayMood = moodHistory?.[0];
-
-  /* =========================
-      SESSIONS (localStorage)
-      Standard statuses:
-      pending | confirmed | completed | cancelled
-  ========================= */
-  const sessions = useMemo(() => {
-    try {
-      return JSON.parse(localStorage.getItem("sessions")) || [];
-    } catch {
-      return [];
-    }
-  }, [tick]);
-
-  // Fallback demo sessions if empty (so UI isn't dead)
-  const fallbackSessions = [
-    {
-      id: 1,
-      counselor: "Dr. Anjana Shrestha",
-      counselorId: "c-1001",
-      date: "2026-01-21",
-      time: "10:00 AM",
-      type: "Online",
-      status: "confirmed",
-      meetingLink: "https://meet.example.com/demo",
-    },
-    {
-      id: 2,
-      counselor: "Mr. Kiran Gurung",
-      counselorId: "c-1002",
-      date: "2026-01-10",
-      time: "03:00 PM",
-      type: "In-person",
-      status: "completed",
-    },
-  ];
-
-  const allSessions = sessions.length ? sessions : fallbackSessions;
-
-  // helpers
-  const normalizeStatus = (status) => (status || "").toLowerCase().trim();
-
-  const parseDateTime = (s) => {
-    // date can be YYYY-MM-DD, time can be "10:00 AM"
-    // We'll create a best-effort Date object.
-    try {
-      const dateStr = s?.date;
-      const timeStr = s?.time || "12:00 PM";
-      if (!dateStr) return null;
-
-      // Convert "10:00 AM" -> 10:00
-      const m = String(timeStr).match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
-      let hh = 12;
-      let mm = 0;
-      if (m) {
-        hh = parseInt(m[1], 10);
-        mm = parseInt(m[2], 10);
-        const ap = m[3].toUpperCase();
-        if (ap === "PM" && hh !== 12) hh += 12;
-        if (ap === "AM" && hh === 12) hh = 0;
-      }
-
-      const d = new Date(`${dateStr}T00:00:00`);
-      if (Number.isNaN(d.getTime())) return null;
-      d.setHours(hh, mm, 0, 0);
-      return d;
-    } catch {
-      return null;
+      const res = await api.get("/user/mood-entries?range=7d");
+      setMoodItems(res.data?.items || []);
+    } catch (e) {
+      console.log("Mood fetch failed:", e?.response?.status, e?.response?.data || e.message);
+      setMoodItems([]);
+    } finally {
+      setMoodLoading(false);
     }
   };
 
-  const now = new Date();
+  // Load on first open + when you return from MoodCheckIn (refreshMood)
+  useEffect(() => {
+    loadMood();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.state?.refreshMood]);
 
-  const upcoming = allSessions
-    .filter((s) => {
-      const st = normalizeStatus(s.status);
-      return st === "pending" || st === "confirmed" || st.includes("sched");
-    })
-    .sort((a, b) => {
-      const da = parseDateTime(a)?.getTime() ?? Number.MAX_SAFE_INTEGER;
-      const db = parseDateTime(b)?.getTime() ?? Number.MAX_SAFE_INTEGER;
-      return da - db;
-    });
-
-  const past = allSessions
-    .filter((s) => {
-      const st = normalizeStatus(s.status);
-      return st === "completed" || st === "cancelled" || st.includes("complete") || st.includes("cancel");
-    })
-    .sort((a, b) => {
-      const da = parseDateTime(a)?.getTime() ?? 0;
-      const db = parseDateTime(b)?.getTime() ?? 0;
-      return db - da;
-    });
-
-  const nextSession = upcoming[0] || null;
-
-  const nextSessionStatus = normalizeStatus(nextSession?.status);
-  const hasCounselorAssigned = !!nextSession?.counselor && !!nextSession?.counselorId;
-  const isSessionConfirmed =
-    nextSessionStatus === "confirmed" || nextSessionStatus.includes("confirm");
-
-  const chatUnlocked = Boolean(nextSession && hasCounselorAssigned && isSessionConfirmed);
+  const todayMood = moodItems?.[0];
 
   /* =========================
-      NOTIFICATIONS (localStorage)
-      helps feel real-time
+      SESSIONS (FROM BACKEND)
   ========================= */
-  const notifications = useMemo(() => {
+  const [nextSession, setNextSession] = useState(null);
+  const [sessionLoading, setSessionLoading] = useState(false);
+
+  const [sessions, setSessions] = useState([]);
+  const [sessionsLoading, setSessionsLoading] = useState(false);
+
+  // prevent duplicate polling in React StrictMode (dev)
+  const pollStartedRef = useRef(false);
+
+  const loadNextSession = async () => {
+    setSessionLoading(true);
     try {
-      const n = JSON.parse(localStorage.getItem("notifications")) || [];
-      return Array.isArray(n) ? n : [];
-    } catch {
-      return [];
+      const res = await api.get("/user/appointments/next");
+      const appointment = res.data?.item || null;
+      
+      if (!appointment) {
+        setNextSession(null);
+        return;
+      }
+
+      // Transform appointment to expected format
+      setNextSession({
+        id: appointment.id,
+        counselor_id: appointment.counselor_id,
+        counselor_name: appointment.counselor?.name || "Counselor not assigned",
+        date: appointment.date_time ? new Date(appointment.date_time).toISOString().split('T')[0] : null,
+        time: appointment.date_time ? new Date(appointment.date_time).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : null,
+        type: appointment.type,
+        status: appointment.status,
+      });
+    } catch (e) {
+      console.log("Next session fetch failed:", e?.response?.status, e?.response?.data || e.message);
+      setNextSession(null);
+    } finally {
+      setSessionLoading(false);
     }
-  }, [tick]);
+  };
 
-  const fallbackNotifications = [
-    {
-      id: "n1",
-      type: "info",
-      title: "Welcome to MannSathi",
-      message: "Book your first session when you’re ready.",
-      time: "Just now",
-    },
-    {
-      id: "n2",
-      type: "success",
-      title: "Mood check-in reminder",
-      message: "Tracking moods helps your counselor understand you better.",
-      time: "Today",
-    },
-  ];
+  const loadSessions = async () => {
+    setSessionsLoading(true);
+    try {
+      const res = await api.get("/user/sessions");
+      setSessions(res.data?.items || []);
+    } catch (e) {
+      console.log("Sessions fetch failed:", e?.response?.status, e?.response?.data || e.message);
+      setSessions([]);
+    } finally {
+      setSessionsLoading(false);
+    }
+  };
 
-  const feed = (notifications.length ? notifications : fallbackNotifications).slice(0, 4);
+  // initial load
+  useEffect(() => {
+    loadNextSession();
+    loadSessions();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // light “real-time”: refresh next session every 10s (guarded for dev StrictMode)
+  useEffect(() => {
+    if (pollStartedRef.current) return;
+    pollStartedRef.current = true;
+
+    const t = setInterval(() => {
+      loadNextSession();
+    }, 10000);
+
+    return () => clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const normalizeStatus = (status) => (status || "").toLowerCase().trim();
+
+  const upcoming = sessions.filter((s) => {
+    const st = normalizeStatus(s.status);
+    return st === "pending" || st === "confirmed";
+  });
+
+  const nextSessionStatus = normalizeStatus(nextSession?.status);
+  const hasCounselorAssigned = Boolean(nextSession?.counselor_id);
+  const isSessionConfirmed = nextSessionStatus === "confirmed";
+  const chatUnlocked = Boolean(nextSession && hasCounselorAssigned && isSessionConfirmed);
 
   /* =========================
       LOGOUT
@@ -204,6 +150,7 @@ export default function UserDashboard() {
       NAV
   ========================= */
   const navItems = [
+    { label: "Dashboard", to: "/users/dashboard", icon: "🏠" },
     { label: "Search Counselor", to: "/search-doctor", icon: "🧑‍⚕️" },
     { label: "Sessions", to: "/sessions", icon: "📅" },
     { label: "Payments", to: "/payments", icon: "💳" },
@@ -216,70 +163,44 @@ export default function UserDashboard() {
     const s = normalizeStatus(status);
     const base = "text-[11px] rounded-full px-3 py-1 border whitespace-nowrap";
 
-    if (s === "confirmed" || s.includes("confirm"))
-      return `${base} bg-emerald-50 border-emerald-200 text-emerald-700`;
-    if (s === "pending" || s.includes("pending"))
-      return `${base} bg-amber-50 border-amber-200 text-amber-700`;
-    if (s === "completed" || s.includes("complete"))
-      return `${base} bg-green-50 border-green-200 text-green-700`;
-    if (s === "cancelled" || s.includes("cancel"))
-      return `${base} bg-gray-50 border-gray-200 text-gray-700`;
+    if (s === "confirmed") return `${base} bg-emerald-50 border-emerald-200 text-emerald-700`;
+    if (s === "pending") return `${base} bg-amber-50 border-amber-200 text-amber-700`;
+    if (s === "completed") return `${base} bg-green-50 border-green-200 text-green-700`;
+    if (s === "cancelled") return `${base} bg-gray-50 border-gray-200 text-gray-700`;
 
     return `${base} bg-[#f9fafb] border-[#e5e7eb] text-[#374151]`;
   };
 
-  const notifDot = (type) => {
-    const t = (type || "").toLowerCase();
-    if (t === "success") return "bg-emerald-500";
-    if (t === "warning") return "bg-amber-500";
-    if (t === "danger") return "bg-rose-500";
-    return "bg-slate-400";
-  };
-
   const quickActions = [
-    { title: "Book session", desc: "Find a counselor", to: "/users/BookAppointmentUser", icon: "📌" },
+    { title: "Book session", desc: "Find a counselor", to: "/users/appointments/book", icon: "📌" },
     { title: "My sessions", desc: "Upcoming & history", to: "/sessions", icon: "🗓️" },
     { title: "Mood check-in", desc: "Track emotions", to: "/users/mood-check", icon: "🙂" },
   ];
 
-  // Chat action is dynamic (locked/unlocked)
   const chatAction = {
     title: "Chat",
     desc: chatUnlocked ? "Message your counselor" : "Unlocks after confirmation",
-    to: chatUnlocked ? "/chat" : "#",
+    to: chatUnlocked ? `/chat/${nextSession?.id}` : "#",
     icon: "💬",
     locked: !chatUnlocked,
   };
 
-  const categories = [
-    { icon: "💬", label: "Stress & Anxiety", chip: "Popular" },
-    { icon: "🌙", label: "Sleep & Rest", chip: "New" },
-    { icon: "🧠", label: "Self-esteem", chip: "Recommended" },
-    { icon: "❤️", label: "Relationships", chip: "Trending" },
-  ];
-
-  const counselors = [
-    { name: "Dr. Anjana Shrestha", tag: "Anxiety • Online", badge: "Available" },
-    { name: "Mr. Kiran Gurung", tag: "Stress • In-person", badge: "New" },
-    { name: "Ms. Sita Lama", tag: "Teens • Online", badge: "Top" },
-  ];
-
-  const formatRelative = (d) => {
-    if (!d) return "";
-    const ms = d.getTime() - now.getTime();
-    const abs = Math.abs(ms);
-    const mins = Math.round(abs / 60000);
-    const hrs = Math.round(abs / 3600000);
-    const days = Math.round(abs / 86400000);
-
-    if (abs < 60000) return "now";
-    if (abs < 3600000) return ms > 0 ? `in ${mins} min` : `${mins} min ago`;
-    if (abs < 86400000) return ms > 0 ? `in ${hrs} hr` : `${hrs} hr ago`;
-    return ms > 0 ? `in ${days} day` : `${days} day ago`;
+  // Helper function to get emoji for mood
+  const getMoodEmoji = (mood) => {
+    const moodMap = {
+      happy: "😊",
+      sad: "😢",
+      anxious: "😰",
+      calm: "😌",
+      angry: "😠",
+      neutral: "😐",
+      excited: "🤩",
+      stressed: "😣",
+      tired: "😴",
+      grateful: "🙏",
+    };
+    return moodMap[mood?.toLowerCase()] || "🙂";
   };
-
-  const nextDateObj = nextSession ? parseDateTime(nextSession) : null;
-  const nextWhen = nextDateObj ? formatRelative(nextDateObj) : "";
 
   return (
     <div className="min-h-screen bg-[#f8f6f0] flex">
@@ -306,9 +227,9 @@ export default function UserDashboard() {
       {open && (
         <div className="md:hidden fixed inset-0 z-50">
           <div className="absolute inset-0 bg-black/30" onClick={() => setOpen(false)} />
-          <aside className="w-56 h-16 bg-[#215c4c] [clip-path:polygon(0_0,100%_0,100%_60%,50%_100%,0_60%)]">
-            <div className="absolute inset-0 flex items-center justify-center">
-              <div className="text-white font-semibold text-xl font-serif tracking-wide">MannSathi</div>
+          <aside className="absolute left-0 top-0 h-full w-72 bg-[#215c4c] text-white px-6 py-6">
+            <div className="flex items-center justify-between">
+              <div className="font-serif font-semibold text-xl tracking-wide">MannSathi</div>
               <button onClick={() => setOpen(false)} className="text-white text-lg">
                 ✕
               </button>
@@ -318,8 +239,10 @@ export default function UserDashboard() {
               <p className="text-sm font-semibold">{userName}</p>
               <p className="text-xs text-[#d6ebe2]">{userEmail}</p>
               <div className="mt-3 text-xs text-[#d6ebe2]">
-                Mood today:{" "}
-                <span className="font-semibold text-white">{todayMood?.mood || "not checked"}</span>
+                Mood:{" "}
+                <span className="font-semibold text-white">
+                  {moodLoading ? "loading..." : todayMood?.mood || "not checked"}
+                </span>
               </div>
             </div>
 
@@ -375,7 +298,9 @@ export default function UserDashboard() {
             <div className="mt-4 text-xs text-[#d6ebe2] flex items-center justify-between gap-2">
               <span>
                 Mood:{" "}
-                <span className="font-semibold text-white">{todayMood?.mood || "not checked"}</span>
+                <span className="font-semibold text-white">
+                  {moodLoading ? "loading..." : todayMood?.mood || "not checked"}
+                </span>
               </span>
               <Link to="/users/mood-check" className="underline text-[#dfeee7] hover:text-white">
                 update
@@ -383,7 +308,7 @@ export default function UserDashboard() {
             </div>
 
             <Link
-              to="/users/BookAppointmentUser"
+              to="/users/appointments/book"
               className="mt-4 inline-flex w-full items-center justify-center rounded-full bg-white text-[#1f4e43] text-xs font-semibold px-4 py-2.5
                          shadow-[0_3px_0_0_rgba(0,0,0,0.15)] hover:-translate-y-[1px] transition"
             >
@@ -419,408 +344,344 @@ export default function UserDashboard() {
       </aside>
 
       {/* MAIN */}
-      <main className="flex-1 px-5 md:px-10 py-6 md:py-8 pt-20 md:pt-8">
-        {/* Header */}
-        <div className="mb-6">
-          <h1 className="text-xl md:text-2xl font-semibold text-[#1e293b]">
-            Hi, {userName} 👋
-          </h1>
-          <p className="mt-1 text-sm text-[#6b7280]">
-            Your counseling dashboard — sessions, mood tracking, and support.
-          </p>
+      <main className="flex-1 px-4 md:px-10 py-6 md:py-10 pt-24 md:pt-10 bg-gradient-to-br from-[#f8f6f0] via-[#faf9f7] to-[#f3f0eb]">
+        {/* Welcome Header with Gradient */}
+        <div className="mb-8">
+          <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
+            <div>
+              <h1 className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-[#1f4e43] to-[#2a6b5e] bg-clip-text text-transparent">
+                Welcome back, {userName} 👋
+              </h1>
+              <p className="mt-2 text-base text-[#666] font-medium">
+                Your mental wellness journey starts here
+              </p>
+            </div>
+            <div className="flex gap-3 flex-wrap md:flex-nowrap">
+              <Link
+                to="/users/mood-check"
+                className="px-5 py-2 bg-white border border-[#e5e7eb] rounded-full text-sm font-medium hover:bg-[#f9fafb] transition shadow-sm"
+              >
+                📊 Update mood
+              </Link>
+              <Link
+                to="/users/appointments/book"
+                className="px-5 py-2 bg-gradient-to-r from-[#1f4e43] to-[#2a6b5e] text-white rounded-full text-sm font-medium hover:shadow-lg hover:-translate-y-0.5 transition shadow-md"
+              >
+                ➕ Book session
+              </Link>
+            </div>
+          </div>
 
-          <div className="mt-4 flex flex-wrap gap-3 text-xs">
-            <span className="inline-flex items-center gap-2 rounded-full bg-white border border-[#d5e4da] px-3 py-1 shadow-sm">
-              Mood: {todayMood?.mood || "not checked"}
-            </span>
-            <span className="inline-flex items-center gap-2 rounded-full bg-white border border-[#d5e4da] px-3 py-1 shadow-sm">
-              📅 {upcoming.length} upcoming
-            </span>
-            {nextSession && (
-              <span className="inline-flex items-center gap-2 rounded-full bg-white border border-[#d5e4da] px-3 py-1 shadow-sm">
-                Next: {nextWhen || "soon"}
-              </span>
-            )}
+          {/* Quick Stats */}
+          <div className="mt-6 grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="bg-white rounded-2xl p-4 border border-[#e5e7eb] shadow-sm hover:shadow-md transition">
+              <div className="text-xs uppercase tracking-wider text-[#999] font-semibold">
+                Today's Mood
+              </div>
+              <p className="mt-2 text-2xl font-bold text-[#1f4e43]">
+                {moodLoading ? "..." : todayMood?.mood || "—"}
+              </p>
+              <p className="text-[11px] text-[#999] mt-1">Last checked today</p>
+            </div>
+
+            <div className="bg-white rounded-2xl p-4 border border-[#e5e7eb] shadow-sm hover:shadow-md transition">
+              <div className="text-xs uppercase tracking-wider text-[#999] font-semibold">
+                Upcoming Sessions
+              </div>
+              <p className="mt-2 text-2xl font-bold text-[#1f4e43]">
+                {sessionsLoading ? "..." : upcoming.length}
+              </p>
+              <p className="text-[11px] text-[#999] mt-1">
+                {upcoming.length === 1 ? "coming up" : "scheduled"}
+              </p>
+            </div>
+
+            <div className="bg-white rounded-2xl p-4 border border-[#e5e7eb] shadow-sm hover:shadow-md transition">
+              <div className="text-xs uppercase tracking-wider text-[#999] font-semibold">
+                Mood Track
+              </div>
+              <p className="mt-2 text-2xl font-bold text-[#1f4e43]">
+                {moodLoading ? "..." : moodItems.length}
+              </p>
+              <p className="text-[11px] text-[#999] mt-1">entries this week</p>
+            </div>
+
+            <div className="bg-gradient-to-br from-[#f0f9f7] to-[#e8f4f1] rounded-2xl p-4 border border-[#d5e8e4] shadow-sm">
+              <div className="text-xs uppercase tracking-wider text-[#1f4e43] font-semibold">
+                Status
+              </div>
+              <p className="mt-2 text-2xl font-bold text-[#1f4e43]">
+                {nextSession ? "Ready" : "Free"}
+              </p>
+              <p className="text-[11px] text-[#666] mt-1">
+                {nextSession ? "Session awaiting" : "Book a session"}
+              </p>
+            </div>
           </div>
         </div>
 
         {/* HERO: Next session */}
-        <section className="mb-8">
-          <div className="bg-white rounded-3xl border border-[#e5e7eb] shadow-sm overflow-hidden">
-            <div className="px-6 py-5 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-              <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  <h2 className="text-base font-semibold">Next session</h2>
-                  {nextSession ? (
-                    <span className={badgeClass(nextSession.status)}>{normalizeStatus(nextSession.status) || "pending"}</span>
-                  ) : (
-                    <span className="text-[11px] rounded-full px-3 py-1 border bg-gray-50 border-gray-200 text-gray-700">
-                      none
-                    </span>
-                  )}
+        <section className="mb-10">
+          <div className="bg-gradient-to-br from-white to-[#f9fafb] rounded-3xl border border-[#e5e7eb] shadow-lg overflow-hidden hover:shadow-xl transition">
+            {/* Header with gradient accent */}
+            <div className="bg-gradient-to-r from-[#1f4e43] to-[#2a6b5e] px-6 md:px-8 py-6 text-white">
+              <div className="flex items-center gap-3">
+                <span className="text-3xl">📅</span>
+                <div>
+                  <h2 className="text-lg md:text-xl font-bold">Your Next Session</h2>
+                  <p className="text-sm text-white/80">Upcoming counseling appointment</p>
                 </div>
-
-                {nextSession ? (
-                  <>
-                    <p className="mt-2 text-sm text-[#111827] font-semibold">
-                      {nextSession.counselor || "Counselor not assigned"}
-                    </p>
-                    <p className="text-xs text-[#6b7280] mt-1">
-                      {nextSession.date} • {nextSession.time} • {nextSession.type}
-                      {nextWhen ? <span className="ml-2">• {nextWhen}</span> : null}
-                    </p>
-
-                    {!hasCounselorAssigned && (
-                      <div className="mt-3 text-xs rounded-2xl border border-amber-200 bg-amber-50 text-amber-800 px-4 py-2">
-                        Counselor assignment is pending. Chat will unlock after confirmation.
-                      </div>
-                    )}
-
-                    {hasCounselorAssigned && !isSessionConfirmed && (
-                      <div className="mt-3 text-xs rounded-2xl border border-amber-200 bg-amber-50 text-amber-800 px-4 py-2">
-                        Your session is not confirmed yet. Chat will unlock after confirmation.
-                      </div>
-                    )}
-                  </>
-                ) : (
-                  <p className="mt-2 text-sm text-[#6b7280]">
-                    No session booked yet. Book a counselor to get started.
-                  </p>
-                )}
-              </div>
-
-              <div className="flex flex-wrap gap-2">
-                <Link
-                  to="/users/BookAppointmentUser"
-                  className="text-xs rounded-full bg-[#1f4e43] text-white px-4 py-2 hover:opacity-95"
-                >
-                  Book / Reschedule
-                </Link>
-
-                <Link
-                  to="/sessions"
-                  className="text-xs rounded-full border border-[#e5e7eb] bg-white px-4 py-2 hover:bg-[#f3f4f6] transition"
-                >
-                  View sessions
-                </Link>
-
-                {chatUnlocked ? (
-                  <Link
-                    to="/chat"
-                    className="text-xs rounded-full bg-[#111827] text-white px-4 py-2 hover:opacity-95"
-                  >
-                    Chat now
-                  </Link>
-                ) : (
-                  <button
-                    type="button"
-                    className="text-xs rounded-full bg-[#111827]/20 text-[#111827] px-4 py-2 cursor-not-allowed"
-                    title="Chat unlocks after session confirmation"
-                    disabled
-                  >
-                    Chat locked
-                  </button>
-                )}
-
-                {chatUnlocked && nextSession?.meetingLink ? (
-                  <a
-                    href={nextSession.meetingLink}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-xs rounded-full border border-[#e5e7eb] bg-white px-4 py-2 hover:bg-[#f3f4f6] transition"
-                  >
-                    Join meeting
-                  </a>
-                ) : null}
               </div>
             </div>
 
-            <div className="px-6 py-4 bg-[#f9fafb] border-t border-[#e5e7eb] flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-              <div className="text-xs text-[#6b7280]">
-                Tip: keep your mood updated before sessions for better guidance.
+            {/* Session Details */}
+            <div className="px-6 md:px-8 py-8">
+              {sessionLoading ? (
+                <div className="space-y-4">
+                  <div className="h-6 bg-gray-200 rounded-lg w-48 animate-pulse"></div>
+                  <div className="h-4 bg-gray-200 rounded-lg w-32 animate-pulse"></div>
+                </div>
+              ) : nextSession ? (
+                <div className="space-y-6">
+                  {/* Counselor Info */}
+                  <div className="flex items-start gap-4">
+                    <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-[#e3f3e6] to-[#d5e8e4] flex items-center justify-center text-3xl flex-shrink-0">
+                      👨‍⚕️
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-sm text-[#999] uppercase tracking-wider font-semibold">
+                        Counselor
+                      </p>
+                      <p className="mt-1 text-xl md:text-2xl font-bold text-[#111827]">
+                        {nextSession.counselor_name}
+                      </p>
+                      <p className="mt-2 text-sm text-[#666]">
+                        {nextSession.type === "video" ? "🎥 Video call" : "💬 Chat session"}
+                      </p>
+                    </div>
+                    <span className={badgeClass(nextSession.status)}>
+                      {normalizeStatus(nextSession.status)}
+                    </span>
+                  </div>
+
+                  {/* Date & Time */}
+                  <div className="bg-[#f9fafb] rounded-2xl p-5 border border-[#e5e7eb]">
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                      <div>
+                        <p className="text-xs text-[#999] uppercase tracking-wider font-semibold">
+                          Date
+                        </p>
+                        <p className="mt-2 text-lg font-bold text-[#1f4e43]">
+                          {nextSession.date}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-[#999] uppercase tracking-wider font-semibold">
+                          Time
+                        </p>
+                        <p className="mt-2 text-lg font-bold text-[#1f4e43]">
+                          {nextSession.time}
+                        </p>
+                      </div>
+                      <div className="hidden md:block">
+                        <p className="text-xs text-[#999] uppercase tracking-wider font-semibold">
+                          Session Type
+                        </p>
+                        <p className="mt-2 text-lg font-bold text-[#1f4e43]">
+                          {nextSession.type === "video" ? "Video" : "Chat"}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Status Messages */}
+                  {!hasCounselorAssigned && (
+                    <div className="bg-amber-50 border-l-4 border-amber-400 rounded-lg p-4 flex gap-3">
+                      <span className="text-xl flex-shrink-0">⏳</span>
+                      <div>
+                        <p className="font-semibold text-amber-900 text-sm">
+                          Waiting for counselor assignment
+                        </p>
+                        <p className="text-xs text-amber-800 mt-1">
+                          Your counselor will be assigned shortly. Chat will unlock after confirmation.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {hasCounselorAssigned && !isSessionConfirmed && (
+                    <div className="bg-blue-50 border-l-4 border-blue-400 rounded-lg p-4 flex gap-3">
+                      <span className="text-xl flex-shrink-0">ℹ️</span>
+                      <div>
+                        <p className="font-semibold text-blue-900 text-sm">
+                          Awaiting counselor confirmation
+                        </p>
+                        <p className="text-xs text-blue-800 mt-1">
+                          Chat will be available once your counselor confirms the appointment.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {chatUnlocked && (
+                    <div className="bg-emerald-50 border-l-4 border-emerald-400 rounded-lg p-4 flex gap-3">
+                      <span className="text-xl flex-shrink-0">✅</span>
+                      <div>
+                        <p className="font-semibold text-emerald-900 text-sm">
+                          Session confirmed & ready!
+                        </p>
+                        <p className="text-xs text-emerald-800 mt-1">
+                          You can now start chatting with your counselor.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Action Buttons */}
+                  <div className="flex flex-col md:flex-row gap-3 pt-4">
+                    {chatUnlocked ? (
+                      <>
+                        <Link
+                          to={`/chat/${nextSession?.id}`}
+                          className="flex-1 px-6 py-3 bg-gradient-to-r from-[#1f4e43] to-[#2a6b5e] text-white rounded-full font-semibold hover:shadow-lg hover:-translate-y-0.5 transition flex items-center justify-center gap-2 shadow-md"
+                        >
+                          💬 Start chat
+                        </Link>
+                        {nextSession?.meeting_link && (
+                          <a
+                            href={nextSession.meeting_link}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="flex-1 px-6 py-3 bg-white border border-[#1f4e43] text-[#1f4e43] rounded-full font-semibold hover:bg-[#f0f9f7] transition flex items-center justify-center gap-2"
+                          >
+                            🎥 Join meeting
+                          </a>
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        <Link
+                          to="/users/appointments/book"
+                          className="flex-1 px-6 py-3 bg-gradient-to-r from-[#1f4e43] to-[#2a6b5e] text-white rounded-full font-semibold hover:shadow-lg hover:-translate-y-0.5 transition flex items-center justify-center gap-2 shadow-md"
+                        >
+                          📅 Reschedule
+                        </Link>
+                        <Link
+                          to="/sessions"
+                          className="flex-1 px-6 py-3 bg-white border border-[#e5e7eb] text-[#1f4e43] rounded-full font-semibold hover:bg-[#f9fafb] transition flex items-center justify-center gap-2"
+                        >
+                          📋 View all
+                        </Link>
+                      </>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center py-12">
+                  <div className="text-6xl mb-4">📭</div>
+                  <h3 className="text-xl font-bold text-[#1f4e43] mb-2">No session booked yet</h3>
+                  <p className="text-[#666] mb-6">
+                    Let's get you matched with a counselor for your first session
+                  </p>
+                  <Link
+                    to="/users/appointments/book"
+                    className="inline-flex px-6 py-3 bg-gradient-to-r from-[#1f4e43] to-[#2a6b5e] text-white rounded-full font-semibold hover:shadow-lg hover:-translate-y-0.5 transition shadow-md"
+                  >
+                    ✨ Book your first session
+                  </Link>
+                </div>
+              )}
+            </div>
+
+            {/* Footer Tip */}
+            <div className="px-6 md:px-8 py-4 bg-[#f9fafb] border-t border-[#e5e7eb] flex items-start gap-3">
+              <span className="text-lg flex-shrink-0 mt-0.5">💡</span>
+              <div className="text-sm">
+                <p className="font-semibold text-[#1f4e43]">Pro tip:</p>
+                <p className="text-[#666] mt-1">
+                  Keep your mood journal updated before sessions. This helps your counselor provide better guidance.
+                </p>
               </div>
-              <Link
-                to="/users/mood-check"
-                className="text-xs underline text-[#1f4e43] hover:opacity-90"
-              >
-                Update mood check-in
-              </Link>
             </div>
           </div>
         </section>
 
         {/* Quick Actions */}
-        <section className="mb-10 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-5">
-          {[...quickActions, chatAction].map((a) =>
-            a.locked ? (
-              <div
-                key={a.title}
-                className="bg-white rounded-3xl px-5 py-5 shadow-sm border border-[#e5e7eb] opacity-75"
-              >
-                <div className="w-11 h-11 rounded-2xl bg-[#eef2f7] flex items-center justify-center text-xl">
-                  {a.icon}
-                </div>
-                <p className="mt-4 text-sm font-semibold flex items-center gap-2">
-                  {a.title} <span className="text-[11px] px-2 py-0.5 rounded-full border bg-gray-50">Locked</span>
-                </p>
-                <p className="text-xs text-[#6b7280]">{a.desc}</p>
-                <p className="mt-3 text-[11px] text-[#6b7280]">
-                  Unlocks after your session is <span className="font-semibold">confirmed</span>.
-                </p>
-              </div>
-            ) : (
-              <Link
-                key={a.title}
-                to={a.to}
-                className="bg-white rounded-3xl px-5 py-5 shadow-sm border border-[#e5e7eb]
-                         hover:-translate-y-[2px] hover:shadow-md transition"
-              >
-                <div className="w-11 h-11 rounded-2xl bg-[#e3f3e6] flex items-center justify-center text-xl">
-                  {a.icon}
-                </div>
-                <p className="mt-4 text-sm font-semibold">{a.title}</p>
-                <p className="text-xs text-[#6b7280]">{a.desc}</p>
-              </Link>
-            )
-          )}
-        </section>
-
-        {/* Notifications + Topics */}
-        <section className="mb-10 grid grid-cols-1 lg:grid-cols-3 gap-5">
-          {/* Notifications */}
-          <div className="bg-white rounded-3xl px-6 py-5 border border-[#e5e7eb] shadow-sm lg:col-span-1">
-            <div className="flex items-end justify-between">
-              <div>
-                <h2 className="text-base font-semibold">Updates</h2>
-                <p className="text-xs text-[#6b7280]">Latest activity (simulated real-time)</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  // quick clear for demo/testing
-                  localStorage.removeItem("notifications");
-                  setTick((x) => x + 1);
-                }}
-                className="text-xs underline text-[#1f4e43]"
-              >
-                Clear
-              </button>
-            </div>
-
-            <div className="mt-4 space-y-3">
-              {feed.map((n) => (
-                <div key={n.id} className="rounded-2xl border border-[#e5e7eb] p-4">
-                  <div className="flex items-start gap-3">
-                    <div className={`w-2.5 h-2.5 mt-1.5 rounded-full ${notifDot(n.type)}`} />
-                    <div className="min-w-0">
-                      <p className="text-sm font-semibold text-[#111827] truncate">{n.title}</p>
-                      <p className="text-xs text-[#6b7280] mt-1">{n.message}</p>
-                      <p className="text-[11px] text-[#94a3b8] mt-2">{n.time}</p>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <Link
-              to="/sessions"
-              className="mt-4 inline-flex text-xs rounded-full border border-[#e5e7eb] px-4 py-2 hover:bg-[#f3f4f6] transition"
-            >
-              View activity
-            </Link>
-          </div>
-
-          {/* Topics */}
-          <div className="lg:col-span-2">
-            <div className="flex items-end justify-between">
-              <div>
-                <h2 className="text-base font-semibold">Topics</h2>
-                <p className="text-xs text-[#6b7280]">Pick a topic to find matching counselors.</p>
-              </div>
-              <Link to="/search-doctor" className="text-xs underline text-[#1f4e43]">
-                View all
-              </Link>
-            </div>
-
-            <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-              {categories.map((c) => (
-                <Link
-                  key={c.label}
-                  to="/search-doctor"
-                  className="bg-white rounded-3xl px-5 py-5 shadow-sm border border-[#e5e7eb]
-                         hover:-translate-y-[2px] hover:shadow-md transition"
-                >
-                  <div className="flex items-start justify-between">
-                    <div className="w-11 h-11 rounded-2xl bg-[#f7efe1] flex items-center justify-center text-xl">
-                      {c.icon}
-                    </div>
-                    <span className="text-[11px] rounded-full border border-[#e5e7eb] bg-[#f9fafb] px-3 py-1 text-[#374151]">
-                      {c.chip}
-                    </span>
-                  </div>
-                  <p className="mt-4 text-sm font-semibold">{c.label}</p>
-                  <p className="text-xs text-[#6b7280]">Find help for this topic</p>
-                </Link>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        {/* Recommended Counselors */}
         <section className="mb-10">
-          <div className="flex items-end justify-between">
-            <div>
-              <h2 className="text-base font-semibold">Recommended counselors</h2>
-              <p className="text-xs text-[#6b7280]">Suggested profiles (demo data).</p>
-            </div>
-            <Link to="/search-doctor" className="text-xs underline text-[#1f4e43]">
-              Browse
-            </Link>
-          </div>
-
-          <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-5">
-            {counselors.map((d) => (
-              <div
-                key={d.name}
-                className="bg-white rounded-3xl px-5 py-5 shadow-sm border border-[#e5e7eb]"
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <p className="text-sm font-semibold">{d.name}</p>
-                    <p className="text-xs text-[#6b7280]">{d.tag}</p>
-                  </div>
-                  <span className="text-[11px] rounded-full border border-[#d5e4da] bg-[#e3f3e6] px-3 py-1 text-[#1f4e43]">
-                    {d.badge}
-                  </span>
-                </div>
-
-                <Link
-                  to="/users/BookAppointmentUser"
-                  className="mt-4 inline-flex text-xs rounded-full bg-[#1f4e43] text-white px-4 py-2 hover:opacity-95"
+          <h3 className="text-lg font-bold text-[#1f4e43] mb-4">Quick Actions</h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {[...quickActions, chatAction].map((a) =>
+              a.locked ? (
+                <div
+                  key={a.title}
+                  className="bg-white rounded-2xl px-5 py-6 shadow-sm border border-[#e5e7eb] opacity-75 cursor-not-allowed"
+                  title={a.desc}
                 >
-                  Book a slot
-                </Link>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        {/* Upcoming & Past Sessions */}
-        <section className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-          {/* Upcoming */}
-          <div className="bg-white rounded-3xl px-6 py-5 border border-[#e5e7eb] shadow-sm">
-            <div className="flex items-end justify-between">
-              <div>
-                <h2 className="text-base font-semibold">Upcoming sessions</h2>
-                <p className="text-xs text-[#6b7280]">Your next scheduled sessions.</p>
-              </div>
-              <Link to="/sessions" className="text-xs underline text-[#1f4e43]">
-                View all
-              </Link>
-            </div>
-
-            <div className="mt-4 space-y-3">
-              {upcoming.length ? (
-                upcoming.slice(0, 4).map((s) => (
-                  <div key={s.id} className="rounded-2xl border border-[#e5e7eb] p-4">
-                    <div className="flex items-start justify-between gap-2">
-                      <div>
-                        <p className="text-sm font-semibold">{s.counselor || "Counselor not assigned"}</p>
-                        <p className="text-xs text-[#6b7280]">
-                          {s.date} • {s.time} • {s.type}
-                        </p>
-                      </div>
-                      <span className={badgeClass(s.status)}>{normalizeStatus(s.status) || "pending"}</span>
-                    </div>
-
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      <Link
-                        to="/sessions"
-                        className="text-xs rounded-full border px-4 py-2 hover:bg-[#f3f4f6] transition"
-                      >
-                        View details
-                      </Link>
-
-                      {chatUnlocked && nextSession?.id === s.id ? (
-                        <Link
-                          to="/chat"
-                          className="text-xs rounded-full bg-[#111827] text-white px-4 py-2 hover:opacity-95"
-                        >
-                          Chat
-                        </Link>
-                      ) : (
-                        <button
-                          type="button"
-                          className="text-xs rounded-full bg-[#111827]/15 text-[#111827] px-4 py-2 cursor-not-allowed"
-                          disabled
-                          title="Chat unlocks after confirmation"
-                        >
-                          Chat locked
-                        </button>
-                      )}
-                    </div>
+                  <div className="w-12 h-12 rounded-xl bg-gray-100 flex items-center justify-center text-2xl">
+                    {a.icon}
                   </div>
-                ))
-              ) : (
-                <div className="text-sm text-[#6b7280]">
-                  No sessions booked yet.{" "}
-                  <Link to="/users/BookAppointmentUser" className="underline text-[#1f4e43]">
-                    Book your first session
-                  </Link>
-                  .
+                  <p className="mt-4 text-sm font-semibold text-[#111827] flex items-center gap-2">
+                    {a.title}
+                  </p>
+                  <p className="text-xs text-[#666] mt-1">{a.desc}</p>
+                  <div className="mt-3 inline-flex text-[10px] font-semibold px-2 py-1 rounded-full bg-gray-100 text-gray-600">
+                    🔒 Locked
+                  </div>
                 </div>
-              )}
-            </div>
-          </div>
-
-          {/* Past */}
-          <div className="bg-white rounded-3xl px-6 py-5 border border-[#e5e7eb] shadow-sm">
-            <div className="flex items-end justify-between">
-              <div>
-                <h2 className="text-base font-semibold">Past sessions</h2>
-                <p className="text-xs text-[#6b7280]">Your recent counseling history.</p>
-              </div>
-              <Link to="/sessions" className="text-xs underline text-[#1f4e43]">
-                View all
-              </Link>
-            </div>
-
-            <div className="mt-4 space-y-3">
-              {past.length ? (
-                past.slice(0, 4).map((s) => (
-                  <div key={s.id} className="rounded-2xl border border-[#e5e7eb] p-4">
-                    <div className="flex items-start justify-between gap-2">
-                      <div>
-                        <p className="text-sm font-semibold">{s.counselor || "Counselor"}</p>
-                        <p className="text-xs text-[#6b7280]">
-                          {s.date} • {s.time} • {s.type}
-                        </p>
-                      </div>
-                      <span className={badgeClass(s.status)}>{normalizeStatus(s.status) || "completed"}</span>
-                    </div>
-
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      <Link
-                        to="/sessions"
-                        className="text-xs rounded-full border px-4 py-2 hover:bg-[#f3f4f6] transition"
-                      >
-                        View details
-                      </Link>
-                      <Link
-                        to="/payments"
-                        className="text-xs rounded-full border px-4 py-2 hover:bg-[#f3f4f6] transition"
-                      >
-                        Invoice / Payment
-                      </Link>
-                    </div>
-                  </div>
-                ))
               ) : (
-                <div className="text-sm text-[#6b7280]">No past sessions yet.</div>
-              )}
-            </div>
+                <Link
+                  key={a.title}
+                  to={a.to}
+                  className="group bg-white rounded-2xl px-5 py-6 shadow-sm border border-[#e5e7eb] hover:shadow-md hover:border-[#1f4e43]/20 transition"
+                >
+                  <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#e3f3e6] to-[#d5e8e4] flex items-center justify-center text-2xl group-hover:scale-110 transition">
+                    {a.icon}
+                  </div>
+                  <p className="mt-4 text-sm font-semibold text-[#111827] group-hover:text-[#1f4e43] transition">
+                    {a.title}
+                  </p>
+                  <p className="text-xs text-[#666] mt-1">{a.desc}</p>
+                  <div className="mt-4 inline-flex text-[10px] font-bold text-[#1f4e43] group-hover:gap-1 transition gap-0">
+                    Explore <span>→</span>
+                  </div>
+                </Link>
+              )
+            )}
           </div>
         </section>
+
+        {/* Mood Entries Preview */}
+        {moodItems.length > 0 && (
+          <section className="mb-10">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold text-[#1f4e43]">Your mood this week</h3>
+              <Link to="/users/mood-check" className="text-sm text-[#1f4e43] hover:underline font-medium">
+                View all →
+              </Link>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {moodItems.slice(0, 6).map((mood, idx) => (
+                <div
+                  key={idx}
+                  className="bg-white rounded-2xl p-4 border border-[#e5e7eb] hover:shadow-md transition"
+                >
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-xs text-[#999] uppercase tracking-wider font-semibold">
+                        {new Date(mood.created_at).toLocaleDateString()}
+                      </p>
+                      <p className="mt-2 text-2xl font-bold text-[#1f4e43]">{mood.mood}</p>
+                    </div>
+                    <span className="text-4xl opacity-75">{getMoodEmoji(mood.mood)}</span>
+                  </div>
+                  {mood.notes && (
+                    <p className="mt-3 text-xs text-[#666] line-clamp-2 italic">"{mood.notes}"</p>
+                  )}
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
       </main>
     </div>
   );

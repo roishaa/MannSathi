@@ -17,11 +17,7 @@ export default function AdminLogin() {
     setLoading(true);
 
     try {
-      // ✅ ONE endpoint preferred:
-      // const res = await API.post("/admin/login", form);
-
-      // ✅ If you still have hospital-admin/login for now, keep this:
-      // But ideally change backend to /admin/login
+      // ✅ Call /admin/login (baseURL already adds /api via proxy)
       const res = await API.post("/admin/login", {
         email: form.email.trim(),
         password: form.password,

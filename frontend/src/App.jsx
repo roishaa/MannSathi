@@ -6,6 +6,10 @@ import Home from "./pages/Home";
 import Login from "./pages/Login";
 import Signup from "./pages/Signup";
 import BookAppointment from "./pages/BookAppointment";
+import Services from "./pages/Services";
+import About from "./pages/About";
+import Quiz from "./pages/Quiz";
+
 
 // ================= COUNSELOR PAGES =================
 import CounselorSignup from "./pages/counselor/CounselorSignup";
@@ -15,12 +19,13 @@ import CounselorDashboard from "./pages/counselor/CounselorDashboard";
 // ================= USER PAGES =================
 import MoodCheckIn from "./pages/users/MoodCheckIn";
 import UserDashboard from "./pages/users/UserDashboard";
-import BookAppointmentUser from "./pages/users/BookAppointmentUser";
-import Sessions from "./pages/users/Sessions";
+import AppointmentBooking from "./pages/users/AppointmentBooking";
 import Payments from "./pages/users/Payments";
 import UserSettings from "./pages/users/Settings";
 import Chat from "./pages/users/Chat";
 import SearchDoctor from "./pages/SearchDoctor";
+import TestAuth from "./pages/TestAuth";
+import DebugAuth from "./pages/DebugAuth";
 
 // ================= TOPIC PAGES =================
 import Anxiety from "./pages/topics/Anxiety";
@@ -41,6 +46,7 @@ import PlatformAdminRoute from "./routes/PlatformAdminRoute";
 import HospitalAdminDashboard from "./pages/hospitalAdmin/HospitalAdminDashboard";
 import HospitalAdminRoute from "./routes/HospitalAdminRoute";
 import CounselorApproval from "./pages/hospitalAdmin/CounselorApproval";
+import UserRoute from "./routes/UserRoute";
 
 // Optional: Unauthorized page (recommended)
 function Unauthorized() {
@@ -62,22 +68,31 @@ function App() {
         <Route path="/" element={<Home />} />
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<Signup />} />
-        <Route path="/BookAppointment" element={<BookAppointment />} />
+        <Route path="/book-appointment" element={<BookAppointment />} />
+        <Route path="/services" element={<Services />} />
+        <Route path="/about" element={<About />} />
+        <Route path="/quiz" element={<Quiz />} />
+
+        
 
         {/* ================= COUNSELOR ROUTES ================= */}
         <Route path="/counselor/signup" element={<CounselorSignup />} />
         <Route path="/counselor/login" element={<CounselorLogin />} />
         <Route path="/counselor/dashboard" element={<CounselorDashboard />} />
 
-        {/* ================= USER ROUTES ================= */}
-        <Route path="/users/mood-check" element={<MoodCheckIn />} />
-        <Route path="/users/dashboard" element={<UserDashboard />} />
-        <Route path="/users/BookAppointmentUser" element={<BookAppointmentUser />} />
-        <Route path="/sessions" element={<Sessions />} />
-        <Route path="/payments" element={<Payments />} />
-        <Route path="/settings" element={<UserSettings />} />
-        <Route path="/chat" element={<Chat />} />
-        <Route path="/search-doctor" element={<SearchDoctor />} />
+        {/* ================= USER ROUTES (PROTECTED) ================= */}
+        <Route element={<UserRoute />}>
+          <Route path="/users/mood-check" element={<MoodCheckIn />} />
+          <Route path="/users/dashboard" element={<UserDashboard />} />
+          <Route path="/users/appointments/book" element={<AppointmentBooking />} />
+          <Route path="/users/BookAppointmentUser" element={<AppointmentBooking />} />
+          <Route path="/payments" element={<Payments />} />
+          <Route path="/settings" element={<UserSettings />} />
+          <Route path="/chat" element={<Chat />} />
+          <Route path="/search-doctor" element={<SearchDoctor />} />
+          <Route path="/test-auth" element={<TestAuth />} />
+          <Route path="/debug-auth" element={<DebugAuth />} />
+        </Route>
 
         {/* ================= TOPIC ROUTES ================= */}
         <Route path="/topics/anxiety" element={<Anxiety />} />
