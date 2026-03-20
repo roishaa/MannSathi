@@ -9,6 +9,7 @@ import BookAppointment from "./pages/BookAppointment";
 import Services from "./pages/Services";
 import About from "./pages/About";
 import Quiz from "./pages/Quiz";
+import GuestSession from "./pages/GuestSession";
 
 
 // ================= COUNSELOR PAGES =================
@@ -75,6 +76,7 @@ function App() {
         <Route path="/services" element={<Services />} />
         <Route path="/about" element={<About />} />
         <Route path="/quiz" element={<Quiz />} />
+        <Route path="/guest-session/:id" element={<GuestSession />} />
 
         
 

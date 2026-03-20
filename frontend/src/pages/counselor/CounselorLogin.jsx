@@ -39,7 +39,7 @@ export default function CounselorLogin() {
   };
 
   return (
-    <div className="min-h-screen bg-white px-6 pt-28 pb-10">
+    <div className="min-h-screen bg-[radial-gradient(circle_at_top,_#f7fbf8_0%,_#f4f7f2_45%,_#f6f1e7_100%)] px-4 sm:px-6 pt-28 pb-12">
       {/* NAVBAR (FIXED) */}
       <header className="fixed top-0 left-0 w-full z-50 bg-white/95 backdrop-blur border-b border-[#f0f0f0]">
         <div className="mx-auto max-w-6xl flex items-center justify-between px-6 py-4">
@@ -79,30 +79,33 @@ export default function CounselorLogin() {
       </header>
 
       {/* CONTENT */}
-      <main className="mx-auto max-w-6xl mt-10 md:mt-14 px-2 pb-16">
-        <div className="relative flex justify-center">
-          {/* soft background glow */}
-          <div className="absolute -top-10 h-72 w-72 rounded-full bg-[#ffe1d6]/40 blur-3xl" />
-          <div className="absolute top-24 -left-10 h-64 w-64 rounded-full bg-[#e3f3e6]/55 blur-3xl hidden md:block" />
+      <main className="mx-auto max-w-6xl mt-8 md:mt-12 px-2 pb-16">
+        <div className="relative min-h-[72vh] flex items-center justify-center">
+          <div className="pointer-events-none absolute -top-6 right-[8%] h-64 w-64 rounded-full bg-[#e3f3e6]/65 blur-3xl" />
+          <div className="pointer-events-none absolute top-32 -left-10 h-72 w-72 rounded-full bg-[#f6e7d8]/55 blur-3xl" />
+          <div className="pointer-events-none absolute -bottom-6 right-0 h-52 w-52 rounded-full bg-[#d8eee1]/55 blur-3xl hidden md:block" />
 
-          <div className="relative w-full max-w-md">
-            <div className="bg-white rounded-3xl border border-[#efe7dc] shadow-[0_20px_60px_rgba(0,0,0,0.08)] px-8 py-10">
-              <h1 className="text-2xl font-semibold text-neutral-900 mb-2">
-                Counselor Login
-              </h1>
-              <p className="text-sm text-neutral-600 mb-6">
-                Log in to manage your sessions and connect with clients.
-              </p>
+          <div className="relative w-full max-w-md sm:max-w-lg">
+            <div className="rounded-3xl border border-[#ebe4d7] bg-white/90 p-8 sm:p-10 shadow-[0_24px_70px_rgba(32,66,55,0.12)] backdrop-blur">
+              <div className="space-y-3">
+                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[#6f877f]">MannSathi Counselor Portal</p>
+                <h1 className="text-3xl font-semibold text-[#1f2f2a] leading-tight">
+                  Counselor Login
+                </h1>
+                <p className="text-sm text-neutral-600">
+                  Log in to manage your sessions and connect with clients.
+                </p>
+              </div>
 
               {error && (
-                <div className="mb-5 rounded-2xl border border-red-100 bg-red-50 px-4 py-3">
+                <div className="mt-6 rounded-2xl border border-red-100 bg-red-50 px-4 py-3">
                   <p className="text-sm text-red-600">{error}</p>
                 </div>
               )}
 
-              <form onSubmit={handleSubmit} className="space-y-5">
-                <div>
-                  <label className="block text-sm font-medium text-neutral-800 mb-2">
+              <form onSubmit={handleSubmit} className="mt-6 space-y-6">
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium text-neutral-800">
                     Email
                   </label>
                   <input
@@ -111,15 +114,15 @@ export default function CounselorLogin() {
                     value={form.email}
                     onChange={handleChange}
                     className="w-full rounded-2xl border border-[#e3ded0] bg-[#fffdf7]
-                               px-4 py-3 text-sm outline-none
+                               px-4 py-3 text-sm text-[#243630] outline-none transition
                                focus:border-[#89ad8f] focus:ring-2 focus:ring-[#c9e2cf]"
                     placeholder="counselor@example.com"
                     required
                   />
                 </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-neutral-800 mb-2">
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium text-neutral-800">
                     Password
                   </label>
                   <input
@@ -128,7 +131,7 @@ export default function CounselorLogin() {
                     value={form.password}
                     onChange={handleChange}
                     className="w-full rounded-2xl border border-[#e3ded0] bg-[#fffdf7]
-                               px-4 py-3 text-sm outline-none
+                               px-4 py-3 text-sm text-[#243630] outline-none transition
                                focus:border-[#89ad8f] focus:ring-2 focus:ring-[#c9e2cf]"
                     placeholder="••••••••"
                     required
@@ -138,10 +141,10 @@ export default function CounselorLogin() {
                 <button
                   type="submit"
                   disabled={loading}
-                  className="w-full inline-flex justify-center rounded-full border border-[#89ad8f] bg-[#e3f3e6]
-                             px-5 py-3 text-sm font-semibold text-[#305b39]
-                             shadow-[0_4px_0_0_#89ad8f]
-                             hover:translate-y-[1px] hover:shadow-[0_3px_0_0_#89ad8f] transition
+                  className="w-full inline-flex justify-center rounded-2xl border border-[#89ad8f] bg-gradient-to-b from-[#e8f5ea] to-[#d9eddc]
+                             px-5 py-3.5 text-sm font-semibold text-[#305b39]
+                             shadow-[0_8px_22px_rgba(101,143,108,0.24)] transition
+                             hover:-translate-y-[1px] hover:shadow-[0_10px_24px_rgba(101,143,108,0.3)]
                              disabled:opacity-70 disabled:cursor-not-allowed"
                 >
                   {loading ? "Logging in..." : "Login as Counselor"}

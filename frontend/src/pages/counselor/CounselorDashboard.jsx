@@ -62,6 +62,13 @@ export default function CounselorDashboard() {
     summary: "",
   });
 
+  const [sessionNotesForm, setSessionNotesForm] = useState({
+    sessionSummary: "",
+    clientCondition: "",
+    recommendedPractice: "",
+    nextSessionSuggestion: "",
+  });
+
   const counselorName = counselor?.name || counselor?.full_name || "";
   const counselorEmail = counselor?.email || "";
   const counselorSpecialization = counselor?.specialization || "";
@@ -117,6 +124,26 @@ export default function CounselorDashboard() {
       ? "✅ You are Online. Keep responses timely and professional."
       : "⚠️ You are Offline. Clients cannot request new sessions right now.";
   }, [isOnline]);
+
+  const completedSessions = useMemo(() => {
+    return sessions.filter((s) => {
+      const st = (s.status || "").toLowerCase().trim();
+      return ["completed", "declined", "cancelled", "canceled"].includes(st);
+    });
+  }, [sessions]);
+
+  const totalClients = useMemo(() => {
+    return new Set(sessions.map((s) => s.patient).filter(Boolean)).size;
+  }, [sessions]);
+
+  const todayDateLabel = useMemo(() => {
+    return new Date().toLocaleDateString("en-US", {
+      weekday: "long",
+      month: "long",
+      day: "numeric",
+      year: "numeric",
+    });
+  }, []);
 
   useEffect(() => {
     const loadCounselor = async () => {
@@ -274,13 +301,25 @@ export default function CounselorDashboard() {
     }
   };
 
-  const savePersonalNotes = async () => {
+  const savePersonalNotes = async (notesPayload = personalNotes) => {
     setNotesError("");
     try {
-      await api.post("/counselor/notes", { notes: personalNotes });
+      await api.post("/counselor/notes", { notes: notesPayload });
     } catch (err) {
       setNotesError(err?.response?.data?.message || "Failed to save notes.");
     }
+  };
+
+  const saveSessionNotes = async () => {
+    const composedNotes = [
+      `Session Summary: ${sessionNotesForm.sessionSummary || "-"}`,
+      `Client Condition: ${sessionNotesForm.clientCondition || "-"}`,
+      `Recommended Practice: ${sessionNotesForm.recommendedPractice || "-"}`,
+      `Next Session Suggestion: ${sessionNotesForm.nextSessionSuggestion || "-"}`,
+    ].join("\n");
+
+    setPersonalNotes(composedNotes);
+    await savePersonalNotes(composedNotes);
   };
 
   const handleUploadMaterial = async (file) => {
@@ -335,6 +374,20 @@ export default function CounselorDashboard() {
     const today = sessions.filter((s) => s.date === "Today");
     const other = sessions.filter((s) => s.date !== "Today");
     return { today, other };
+  }, [sessions]);
+
+  const getDisplayStatus = (status) => {
+    const s = (status || "").toLowerCase().trim();
+    if (s === "scheduled") return "confirmed";
+    if (s === "declined" || s === "canceled") return "cancelled";
+    return s || "pending";
+  };
+
+  const upcomingSessions = useMemo(() => {
+    return sessions.filter((s) => {
+      const st = (s.status || "").toLowerCase().trim();
+      return !["completed", "cancelled", "canceled", "declined"].includes(st);
+    });
   }, [sessions]);
 
   return (
@@ -395,7 +448,7 @@ export default function CounselorDashboard() {
       <div className="max-w-7xl mx-auto px-4 md:px-6 py-6 grid grid-cols-12 gap-6">
         {/* Sidebar */}
         <aside className="col-span-12 md:col-span-3">
-          <div className="bg-white/80 backdrop-blur rounded-2xl shadow-sm border border-white/60 p-4">
+          <div className="bg-white/85 backdrop-blur rounded-2xl shadow-sm border border-[#ece5da] p-4">
             <div className="flex items-center gap-3">
               <div className="h-12 w-12 rounded-2xl bg-[#f4b860]/20 flex items-center justify-center font-bold text-[#0f2d2b]">
                 {counselorNameLabel?.slice(0, 1)?.toUpperCase()}
@@ -414,31 +467,22 @@ export default function CounselorDashboard() {
 
             <div className="mt-4 space-y-2">
               <SideBtn active={activeTab === "overview"} onClick={() => setActiveTab("overview")}>
-                Overview / Today
+                🏠 Dashboard
               </SideBtn>
               <SideBtn active={activeTab === "sessions"} onClick={() => setActiveTab("sessions")}>
-                Session Management
+                📅 Upcoming Sessions
               </SideBtn>
-              <SideBtn
-                active={activeTab === "interaction"}
-                onClick={() => setActiveTab("interaction")}
-              >
-                Client Interaction
+              <SideBtn active={activeTab === "analytics"} onClick={() => setActiveTab("analytics")}>
+                ✅ Completed Sessions
               </SideBtn>
-              <SideBtn
-                active={activeTab === "analytics"}
-                onClick={() => setActiveTab("analytics")}
-              >
-                Analytics & Reports
+              <SideBtn active={activeTab === "resources"} onClick={() => setActiveTab("resources")}>
+                📝 Session Notes
               </SideBtn>
-              <SideBtn
-                active={activeTab === "resources"}
-                onClick={() => setActiveTab("resources")}
-              >
-                Resources & Notes
+              <SideBtn active={activeTab === "interaction"} onClick={() => setActiveTab("interaction")}>
+                🕒 Availability / Schedule
               </SideBtn>
               <SideBtn active={activeTab === "settings"} onClick={() => setActiveTab("settings")}>
-                Profile & Settings
+                ⚙️ Settings
               </SideBtn>
 
               <div className="pt-3 border-t mt-3">
@@ -452,7 +496,7 @@ export default function CounselorDashboard() {
             </div>
           </div>
 
-          <div className="mt-4 bg-white/80 backdrop-blur rounded-2xl shadow-sm border border-white/60 p-4">
+          <div className="mt-4 bg-white/85 backdrop-blur rounded-2xl shadow-sm border border-[#ece5da] p-4">
             <div className="text-sm font-semibold text-[#1c2b2d]">Daily Note</div>
             <p className="text-xs text-[#6b6f6a] mt-1">{dailyMessage}</p>
             <div className="mt-3 p-3 rounded-xl bg-white/70 border border-[#e4ddd2] text-xs text-[#5f6562]">
@@ -462,98 +506,270 @@ export default function CounselorDashboard() {
         </aside>
 
         {/* Main */}
-        <main className="col-span-12 md:col-span-9">
+        <main className="col-span-12 md:col-span-9 space-y-6">
+          <section className="bg-white/85 backdrop-blur rounded-2xl shadow-sm border border-[#ece5da] p-5 md:p-6">
+            <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
+              <div>
+                <h1 className="text-2xl md:text-3xl font-semibold text-[#1c2b2d]" style={{ fontFamily: "'Fraunces', serif" }}>
+                  Counselor Dashboard
+                </h1>
+                <p className="text-sm text-[#6b6f6a] mt-1">
+                  Welcome back, {counselorNameLabel}. Here is your mental wellness practice overview.
+                </p>
+              </div>
+              <div className="text-sm text-[#5f6562] rounded-xl border border-[#e4ddd2] bg-[#f9f7f2] px-4 py-2 shadow-sm">
+                {todayDateLabel}
+              </div>
+            </div>
+
+            <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+              <SaasStatCard
+                title="Today's Sessions"
+                value={analytics.todayTotal}
+                hint="Scheduled for today"
+                dotClass="bg-[#215c4c]"
+              />
+              <SaasStatCard
+                title="Upcoming Sessions"
+                value={upcomingSessions.length}
+                hint="Awaiting session time"
+                dotClass="bg-[#4f7e71]"
+              />
+              <SaasStatCard
+                title="Completed Sessions"
+                value={completedSessions.length}
+                hint="Finished appointments"
+                dotClass="bg-[#6f8b64]"
+              />
+              <SaasStatCard
+                title="Total Clients"
+                value={totalClients}
+                hint="Unique people helped"
+                dotClass="bg-[#b38a57]"
+              />
+            </div>
+          </section>
+
           {/* 1) Overview / Today’s Summary */}
           {activeTab === "overview" && (
-            <div className="space-y-6">
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                <StatCard label="Sessions Today" value={analytics.todayTotal} />
-                <StatCard label="Pending Approvals" value={analytics.pendingApprovals} />
-                <StatCard label="Upcoming Appointments" value={analytics.upcomingAppointments} />
-                <StatCard label="Avg Rating" value={analytics.avgRating} />
-              </div>
-
-              <div className="bg-white/80 backdrop-blur rounded-2xl shadow-sm border border-white/60 p-5">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <div className="text-lg font-semibold text-[#1c2b2d]" style={{ fontFamily: "'Fraunces', serif" }}>
-                      Today’s Sessions
+            <div className="grid grid-cols-12 gap-6">
+              <div className="col-span-12 xl:col-span-8 space-y-6">
+                <div className="bg-white/85 backdrop-blur rounded-2xl shadow-sm border border-[#ece5da] p-5">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-lg font-semibold text-[#1c2b2d]" style={{ fontFamily: "'Fraunces', serif" }}>
+                        Upcoming Sessions
+                      </div>
+                      <div className="text-sm text-[#6b6f6a]">Your next scheduled counseling sessions</div>
                     </div>
-                    <div className="text-sm text-[#6b6f6a]">Quick view of today’s schedule</div>
-                  </div>
-                  <button
-                    onClick={() => setActiveTab("sessions")}
-                    className="px-4 py-2 rounded-xl border border-[#e4ddd2] text-sm font-semibold hover:bg-white/70"
-                  >
-                    Manage Sessions
-                  </button>
-                </div>
-
-                <div className="mt-4 space-y-3">
-                  {sessionsLoading && (
-                    <div className="text-sm text-[#6b6f6a]">Loading sessions...</div>
-                  )}
-                  {!sessionsLoading && sessionsError && (
-                    <div className="text-sm text-red-600">{sessionsError}</div>
-                  )}
-                  {!sessionsLoading && !sessionsError && groupedSessions.today.length === 0 && (
-                    <div className="text-sm text-[#6b6f6a]">No sessions scheduled.</div>
-                  )}
-                  {!sessionsLoading && !sessionsError && groupedSessions.today.map((s) => (
-                    <div
-                      key={s.id}
-                      className="p-4 rounded-2xl border border-[#e4ddd2] bg-white/60 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"
-                      onClick={() => setSelectedSessionId(s.id)}
+                    <button
+                      onClick={() => setActiveTab("sessions")}
+                      className="px-3.5 py-2 rounded-xl border border-[#e4ddd2] text-xs font-semibold hover:bg-white/70 transition"
                     >
-                      <div className="min-w-0">
-                        <div className="font-semibold text-[#1c2b2d] truncate">{s.patient}</div>
-                        <div className="text-xs text-[#6b6f6a]">
-                          {s.time} • {s.type} • {s.topic}
+                      View all
+                    </button>
+                  </div>
+
+                  <div className="mt-4 space-y-3">
+                    {sessionsLoading && <div className="text-sm text-[#6b6f6a]">Loading sessions...</div>}
+                    {!sessionsLoading && sessionsError && <div className="text-sm text-red-600">{sessionsError}</div>}
+                    {!sessionsLoading && !sessionsError && upcomingSessions.length === 0 && (
+                      <div className="text-sm text-[#6b6f6a]">No upcoming sessions.</div>
+                    )}
+
+                    {!sessionsLoading && !sessionsError && upcomingSessions.map((s) => (
+                      <div key={s.id} className="rounded-xl border border-[#e4ddd2] bg-white p-4 shadow-sm hover:shadow-md transition">
+                        <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
+                          <div className="grid grid-cols-2 md:grid-cols-5 gap-3 text-sm flex-1">
+                            <div>
+                              <p className="text-[11px] uppercase tracking-wider text-[#7c7b77] font-semibold">User name</p>
+                              <p className="mt-1 font-semibold text-[#1c2b2d] truncate">{s.patient || "—"}</p>
+                            </div>
+                            <div>
+                              <p className="text-[11px] uppercase tracking-wider text-[#7c7b77] font-semibold">Date</p>
+                              <p className="mt-1 text-[#1c2b2d] font-medium">{s.date || "Not set"}</p>
+                            </div>
+                            <div>
+                              <p className="text-[11px] uppercase tracking-wider text-[#7c7b77] font-semibold">Time</p>
+                              <p className="mt-1 text-[#1c2b2d] font-medium">{s.time || "Not set"}</p>
+                            </div>
+                            <div>
+                              <p className="text-[11px] uppercase tracking-wider text-[#7c7b77] font-semibold">Session type</p>
+                              <p className="mt-1 text-[#1c2b2d] font-medium capitalize">{s.type || "—"}</p>
+                            </div>
+                            <div>
+                              <p className="text-[11px] uppercase tracking-wider text-[#7c7b77] font-semibold">Session status</p>
+                              <p className="mt-1 text-[#1c2b2d] font-medium capitalize">{getDisplayStatus(s.status)}</p>
+                            </div>
+                          </div>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => {
+                                setSelectedSessionId(s.id);
+                                setActiveTab("interaction");
+                              }}
+                              className="px-3 py-2 rounded-xl bg-[#0f2d2b] text-white text-xs font-semibold hover:opacity-95 transition"
+                            >
+                              View Session
+                            </button>
+                            <button
+                              onClick={() => {
+                                setSelectedSessionId(s.id);
+                                setSessionNotesForm((prev) => ({ ...prev, sessionSummary: s.summary || "" }));
+                              }}
+                              className="px-3 py-2 rounded-xl border border-[#e4ddd2] text-xs font-semibold hover:bg-[#f8f6f2] transition"
+                            >
+                              Write Notes
+                            </button>
+                          </div>
                         </div>
                       </div>
+                    ))}
+                  </div>
+                </div>
 
-                      <div className="flex items-center gap-2 flex-wrap justify-end">
-                        <Badge status={s.status} />
-                        {s.status === "Pending" && (
-                          <>
-                            <button
-                              onClick={() => handleAccept(s.id)}
-                              className="px-3 py-2 rounded-xl bg-[#0f2d2b] text-white text-xs font-semibold hover:opacity-95"
-                            >
-                              Accept
-                            </button>
-                            <button
-                              onClick={() => handleDecline(s.id)}
-                              className="px-3 py-2 rounded-xl border border-[#e4ddd2] text-xs font-semibold hover:bg-white/70"
-                            >
-                              Decline
-                            </button>
-                          </>
-                        )}
+                <div className="bg-white/85 backdrop-blur rounded-2xl shadow-sm border border-[#ece5da] p-5">
+                  <div className="text-lg font-semibold text-[#1c2b2d]" style={{ fontFamily: "'Fraunces', serif" }}>
+                    Completed Sessions
+                  </div>
+                  <div className="text-sm text-[#6b6f6a]">Review previous session outcomes and notes</div>
 
-                        {s.type === "Chat" && s.status !== "Declined" && (
+                  <div className="mt-4 space-y-3">
+                    {sessionsLoading && <div className="text-sm text-[#6b6f6a]">Loading sessions...</div>}
+                    {!sessionsLoading && sessionsError && <div className="text-sm text-red-600">{sessionsError}</div>}
+                    {!sessionsLoading && !sessionsError && completedSessions.length === 0 && (
+                      <div className="text-sm text-[#6b6f6a]">No sessions scheduled yet.</div>
+                    )}
+
+                    {!sessionsLoading && !sessionsError && completedSessions.map((s) => (
+                      <div key={`completed-${s.id}`} className="rounded-xl border border-[#e4ddd2] bg-white p-4 shadow-sm">
+                        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="text-sm font-semibold text-[#1c2b2d]">{s.patient || "—"}</p>
+                            <p className="text-xs text-[#6b6f6a] mt-1">{s.date || "Not set"}</p>
+                            <p className="text-xs text-[#5f6562] mt-2 line-clamp-2">
+                              {s.summary || s.notes || "No summary available yet."}
+                            </p>
+                          </div>
                           <button
                             onClick={() => {
                               setSelectedSessionId(s.id);
-                              setActiveTab("interaction");
+                              openSummaryModal(s.id);
                             }}
-                            className="px-3 py-2 rounded-xl bg-[#0f2d2b] text-white text-xs font-semibold hover:opacity-95"
+                            className="px-3 py-2 rounded-xl border border-[#e4ddd2] text-xs font-semibold hover:bg-[#f8f6f2] transition"
                           >
-                            Join Chat
+                            View Notes
                           </button>
-                        )}
-
-                        {s.type === "Video" && s.status !== "Declined" && (
-                          <button
-                            onClick={() => setSelectedSessionId(s.id)}
-                            className="px-3 py-2 rounded-xl border border-[#e4ddd2] text-xs font-semibold hover:bg-white/70"
-                          >
-                            Join Video
-                          </button>
-                        )}
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
+                </div>
+
+                <div className="bg-white/85 backdrop-blur rounded-2xl shadow-sm border border-[#ece5da] p-5">
+                  <div className="text-lg font-semibold text-[#1c2b2d]" style={{ fontFamily: "'Fraunces', serif" }}>
+                    Session Notes
+                  </div>
+                  <div className="text-sm text-[#6b6f6a]">Document post-session notes in a structured format</div>
+
+                  <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <label className="block">
+                      <div className="text-xs text-[#5f6562] mb-1.5">Session Summary</div>
+                      <textarea
+                        value={sessionNotesForm.sessionSummary}
+                        onChange={(e) =>
+                          setSessionNotesForm((prev) => ({ ...prev, sessionSummary: e.target.value }))
+                        }
+                        className="w-full min-h-[90px] rounded-xl border border-[#e4ddd2] bg-[#fffdf9] p-3 text-sm outline-none focus:ring-2 focus:ring-[#0f2d2b]/20"
+                        placeholder="Key discussion points and progress"
+                      />
+                    </label>
+
+                    <label className="block">
+                      <div className="text-xs text-[#5f6562] mb-1.5">Client Condition</div>
+                      <textarea
+                        value={sessionNotesForm.clientCondition}
+                        onChange={(e) =>
+                          setSessionNotesForm((prev) => ({ ...prev, clientCondition: e.target.value }))
+                        }
+                        className="w-full min-h-[90px] rounded-xl border border-[#e4ddd2] bg-[#fffdf9] p-3 text-sm outline-none focus:ring-2 focus:ring-[#0f2d2b]/20"
+                        placeholder="Current mental and emotional state"
+                      />
+                    </label>
+
+                    <label className="block">
+                      <div className="text-xs text-[#5f6562] mb-1.5">Recommended Practice</div>
+                      <textarea
+                        value={sessionNotesForm.recommendedPractice}
+                        onChange={(e) =>
+                          setSessionNotesForm((prev) => ({ ...prev, recommendedPractice: e.target.value }))
+                        }
+                        className="w-full min-h-[90px] rounded-xl border border-[#e4ddd2] bg-[#fffdf9] p-3 text-sm outline-none focus:ring-2 focus:ring-[#0f2d2b]/20"
+                        placeholder="Homework, breathing, journaling, etc."
+                      />
+                    </label>
+
+                    <label className="block">
+                      <div className="text-xs text-[#5f6562] mb-1.5">Next Session Suggestion</div>
+                      <textarea
+                        value={sessionNotesForm.nextSessionSuggestion}
+                        onChange={(e) =>
+                          setSessionNotesForm((prev) => ({ ...prev, nextSessionSuggestion: e.target.value }))
+                        }
+                        className="w-full min-h-[90px] rounded-xl border border-[#e4ddd2] bg-[#fffdf9] p-3 text-sm outline-none focus:ring-2 focus:ring-[#0f2d2b]/20"
+                        placeholder="Suggested agenda for the next session"
+                      />
+                    </label>
+                  </div>
+
+                  <div className="mt-4 flex justify-end">
+                    <button
+                      onClick={saveSessionNotes}
+                      className="px-4 py-2 rounded-xl bg-[#0f2d2b] text-white text-sm font-semibold hover:opacity-95 transition"
+                    >
+                      Save Notes
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="col-span-12 xl:col-span-4">
+                <div className="bg-white/85 backdrop-blur rounded-2xl shadow-sm border border-[#ece5da] p-5 sticky top-24">
+                  <div className="text-lg font-semibold text-[#1c2b2d]" style={{ fontFamily: "'Fraunces', serif" }}>
+                    Quick Actions
+                  </div>
+                  <div className="text-sm text-[#6b6f6a] mt-1">Frequently used counselor actions</div>
+
+                  <div className="mt-4 space-y-2.5">
+                    <button
+                      onClick={() => setActiveTab("interaction")}
+                      className="w-full px-4 py-2.5 rounded-xl bg-[#0f2d2b] text-white text-sm font-semibold hover:opacity-95 transition"
+                    >
+                      Start Session
+                    </button>
+                    <button
+                      onClick={() => setActiveTab("sessions")}
+                      className="w-full px-4 py-2.5 rounded-xl border border-[#e4ddd2] text-sm font-semibold hover:bg-[#f8f6f2] transition"
+                    >
+                      View Schedule
+                    </button>
+                    <button
+                      onClick={() => setActiveTab("resources")}
+                      className="w-full px-4 py-2.5 rounded-xl border border-[#e4ddd2] text-sm font-semibold hover:bg-[#f8f6f2] transition"
+                    >
+                      Write Notes
+                    </button>
+                    <button
+                      onClick={() => setActiveTab("analytics")}
+                      className="w-full px-4 py-2.5 rounded-xl border border-[#e4ddd2] text-sm font-semibold hover:bg-[#f8f6f2] transition"
+                    >
+                      View Client History
+                    </button>
+                  </div>
+
+                  <div className="mt-5 rounded-xl border border-[#e4ddd2] bg-[#f9f7f2] p-3 text-xs text-[#5f6562]">
+                    {dailyMessage}
+                  </div>
                 </div>
               </div>
             </div>
@@ -579,6 +795,7 @@ export default function CounselorDashboard() {
                   <SessionGroup
                     title="Today"
                     items={groupedSessions.today}
+                    counselorName={counselorNameLabel}
                     onAccept={handleAccept}
                     onDecline={handleDecline}
                     onOpenChat={() => setActiveTab("interaction")}
@@ -592,6 +809,7 @@ export default function CounselorDashboard() {
                     <SessionGroup
                       title="Other"
                       items={groupedSessions.other}
+                      counselorName={counselorNameLabel}
                       onAccept={handleAccept}
                       onDecline={handleDecline}
                       onOpenChat={() => setActiveTab("interaction")}
@@ -992,22 +1210,43 @@ function StatCard({ label, value }) {
   );
 }
 
+function SaasStatCard({ title, value, hint, dotClass }) {
+  return (
+    <div className="rounded-xl border border-[#e4ddd2] bg-[#fffdf9] p-4 shadow-sm">
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <div className="text-xs text-[#7c7b77] uppercase tracking-wide">{title}</div>
+          <div className="text-2xl font-bold text-[#1c2b2d] mt-1" style={{ fontFamily: "'Fraunces', serif" }}>
+            {value}
+          </div>
+        </div>
+        <span className={`h-2.5 w-2.5 rounded-full mt-1 ${dotClass}`} />
+      </div>
+      <div className="text-[11px] text-[#6b6f6a] mt-2">{hint}</div>
+    </div>
+  );
+}
+
 function Badge({ status }) {
+  const normalized = (status || "").toLowerCase().trim();
   const cls =
-    status === "Scheduled"
+    normalized === "scheduled" || normalized === "confirmed"
       ? "bg-green-100 text-green-700"
-      : status === "Pending"
+      : normalized === "pending"
       ? "bg-yellow-100 text-yellow-800"
-      : status === "Declined"
+      : normalized === "declined" || normalized === "cancelled" || normalized === "canceled"
       ? "bg-red-100 text-red-700"
+      : normalized === "completed"
+      ? "bg-emerald-100 text-emerald-700"
       : "bg-gray-100 text-gray-700";
 
-  return <span className={`px-3 py-1 rounded-full text-xs font-semibold ${cls}`}>{status}</span>;
+  return <span className={`px-3 py-1 rounded-full text-xs font-semibold capitalize ${cls}`}>{status}</span>;
 }
 
 function SessionGroup({
   title,
   items,
+  counselorName,
   onAccept,
   onDecline,
   onOpenChat,
@@ -1026,19 +1265,23 @@ function SessionGroup({
           items.map((s) => (
             <div
               key={s.id}
-              className="p-4 rounded-2xl border border-[#e4ddd2] bg-white/60"
+              className="p-4 rounded-xl border border-[#e4ddd2] bg-white shadow-sm"
               onClick={() => onSelect?.(s.id)}
             >
               <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
                 <div className="min-w-0">
                   <div className="font-semibold text-[#1c2b2d]">{s.patient}</div>
-                  <div className="text-xs text-[#6b6f6a]">
-                    {s.time} • {s.type} • {s.topic}
+                  <div className="mt-2 grid grid-cols-2 md:grid-cols-5 gap-2 text-xs text-[#6b6f6a]">
+                    <span>User: <span className="font-semibold text-[#1c2b2d]">{s.patient || "—"}</span></span>
+                    <span>Counselor: <span className="font-semibold text-[#1c2b2d]">{counselorName || "—"}</span></span>
+                    <span>Date: <span className="font-semibold text-[#1c2b2d]">{s.date || "Not set"}</span></span>
+                    <span>Time: <span className="font-semibold text-[#1c2b2d]">{s.time || "Not set"}</span></span>
+                    <span>Type: <span className="font-semibold text-[#1c2b2d]">{s.type || "—"}</span></span>
                   </div>
                 </div>
 
                 <div className="flex items-center gap-2 flex-wrap justify-end">
-                  <Badge status={s.status} />
+                  <Badge status={s.status === "Scheduled" ? "confirmed" : s.status === "Declined" ? "cancelled" : s.status} />
 
                   {s.status === "Pending" && (
                     <>
@@ -1069,14 +1312,7 @@ function SessionGroup({
                     </button>
                   )}
 
-                  {s.status !== "Declined" && s.type === "Video" && (
-                    <button
-                      className="px-3 py-2 rounded-xl border border-[#e4ddd2] text-xs font-semibold hover:bg-white/70"
-                    >
-                      Join Video
-                    </button>
-                  )}
-
+                
                   <button
                     onClick={() => {
                       onSelect?.(s.id);

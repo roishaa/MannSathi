@@ -1,78 +1,207 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import ChatList from "./ChatList";
 import ChatWindow from "./ChatWindow";
+import api from "../../utils/api";
 
-export default function ChatPanel() {
-  const initialChats = useMemo(
-    () => [
-      {
-        id: "c1",
-        name: "Roisha Maharjan",
-        lastMessage: "I feel anxious today...",
-        unread: 2,
-        messages: [
-          { from: "patient", text: "Hi doctor, I feel anxious today...", time: "10:02" },
-          { from: "counselor", text: "I’m here. Tell me what triggered it?", time: "10:03" },
-          { from: "patient", text: "I had a bad morning and can't focus.", time: "10:04" },
-        ],
-      },
-      {
-        id: "c2",
-        name: "Sujan Shrestha",
-        lastMessage: "Can we reschedule?",
-        unread: 0,
-        messages: [
-          { from: "patient", text: "Hello, can we reschedule?", time: "09:10" },
-          { from: "counselor", text: "Sure. Which day works for you?", time: "09:12" },
-        ],
-      },
-      {
-        id: "c3",
-        name: "Anu Lama",
-        lastMessage: "Thank you for the session!",
-        unread: 0,
-        messages: [
-          { from: "patient", text: "Thank you for the session!", time: "Yesterday" },
-          { from: "counselor", text: "You’re welcome. Take care!", time: "Yesterday" },
-        ],
-      },
-    ],
-    []
+function normalizeChat(item) {
+  return {
+    id: item.id || item.chat_id || item.room_id,
+    sessionId: item.session_id || item.sessionId || null,
+    name:
+      item.patient_name ||
+      item.user_name ||
+      item.patient?.name ||
+      item.user?.name ||
+      "Unknown patient",
+    lastMessage:
+      item.last_message ||
+      item.lastMessage ||
+      item.latest_message ||
+      "No messages yet",
+    unread: Number(item.unread_count || item.unread || 0),
+  };
+}
+
+function normalizeMessage(item) {
+  return {
+    id: item.id,
+    text: item.text || item.message || "",
+    from:
+      item.from ||
+      item.sender_type ||
+      item.sender ||
+      (item.is_mine ? "counselor" : "patient"),
+    time:
+      item.time ||
+      item.created_at_label ||
+      (item.created_at
+        ? new Date(item.created_at).toLocaleTimeString([], {
+            hour: "2-digit",
+            minute: "2-digit",
+          })
+        : ""),
+    created_at: item.created_at || null,
+  };
+}
+
+export default function ChatPanel({ selectedSession }) {
+  const [chats, setChats] = useState([]);
+  const [activeId, setActiveId] = useState(null);
+
+  const [messages, setMessages] = useState([]);
+  const [loadingChats, setLoadingChats] = useState(true);
+  const [loadingMessages, setLoadingMessages] = useState(false);
+  const [chatError, setChatError] = useState("");
+  const [messageError, setMessageError] = useState("");
+  const [sending, setSending] = useState(false);
+
+  const activeChat = useMemo(
+    () => chats.find((c) => String(c.id) === String(activeId)) || null,
+    [chats, activeId]
   );
 
-  const [chats, setChats] = useState(initialChats);
-  const [activeId, setActiveId] = useState(initialChats[0]?.id || null);
+  const loadChats = async () => {
+    setLoadingChats(true);
+    setChatError("");
 
-  const activeChat = chats.find((c) => c.id === activeId);
+    try {
+      const { data } = await api.get("/counselor/chats");
+      const raw = Array.isArray(data) ? data : data?.data || [];
+      const normalized = raw.map(normalizeChat);
+      setChats(normalized);
+
+      if (!activeId && normalized.length > 0) {
+        setActiveId(normalized[0].id);
+      }
+    } catch (err) {
+      setChatError(err?.response?.data?.message || "Failed to load chats.");
+      setChats([]);
+    } finally {
+      setLoadingChats(false);
+    }
+  };
+
+  const loadMessages = async (chatId) => {
+    if (!chatId) {
+      setMessages([]);
+      return;
+    }
+
+    setLoadingMessages(true);
+    setMessageError("");
+
+    try {
+      const { data } = await api.get(`/counselor/chats/${chatId}/messages`);
+      const raw = Array.isArray(data) ? data : data?.data || [];
+      setMessages(raw.map(normalizeMessage));
+    } catch (err) {
+      setMessageError(err?.response?.data?.message || "Failed to load messages.");
+      setMessages([]);
+    } finally {
+      setLoadingMessages(false);
+    }
+  };
+
+  const openChatFromSession = async (sessionId) => {
+    if (!sessionId) return;
+
+    try {
+      const existing = chats.find((c) => String(c.sessionId) === String(sessionId));
+      if (existing) {
+        setActiveId(existing.id);
+        return;
+      }
+
+      const { data } = await api.post(`/counselor/chats/session/${sessionId}/open`);
+      const opened = normalizeChat(data?.data || data);
+
+      setChats((prev) => {
+        const already = prev.find((c) => String(c.id) === String(opened.id));
+        if (already) return prev;
+        return [opened, ...prev];
+      });
+
+      setActiveId(opened.id);
+    } catch (err) {
+      console.error("Open chat from session failed:", err);
+    }
+  };
+
+  useEffect(() => {
+    loadChats();
+  }, []);
+
+  useEffect(() => {
+    if (activeId) loadMessages(activeId);
+  }, [activeId]);
+
+  useEffect(() => {
+    if (selectedSession?.id) {
+      openChatFromSession(selectedSession.id);
+    }
+  }, [selectedSession?.id]);
 
   const handleSelect = (id) => {
     setActiveId(id);
-    setChats((prev) => prev.map((c) => (c.id === id ? { ...c, unread: 0 } : c)));
+    setChats((prev) =>
+      prev.map((c) => (String(c.id) === String(id) ? { ...c, unread: 0 } : c))
+    );
   };
 
-  const handleSend = (text) => {
+  const handleSend = async (text) => {
     if (!text?.trim() || !activeChat) return;
 
-    setChats((prev) =>
-      prev.map((c) => {
-        if (c.id !== activeChat.id) return c;
-        const newMsg = { from: "counselor", text, time: "Now" };
-        return {
-          ...c,
-          lastMessage: text,
-          messages: [...c.messages, newMsg],
-        };
-      })
-    );
+    setSending(true);
+
+    try {
+      const { data } = await api.post(`/counselor/chats/${activeChat.id}/messages`, {
+        message: text,
+      });
+
+      const saved = normalizeMessage(data?.data || data || { message: text, from: "counselor" });
+
+      setMessages((prev) => [...prev, saved]);
+
+      setChats((prev) =>
+        prev.map((c) =>
+          String(c.id) === String(activeChat.id)
+            ? { ...c, lastMessage: saved.text || text }
+            : c
+        )
+      );
+    } catch (err) {
+      setMessageError(err?.response?.data?.message || "Failed to send message.");
+    } finally {
+      setSending(false);
+    }
   };
 
   return (
     <div className="h-[75vh] md:h-[78vh] grid grid-cols-12">
       <div className="col-span-12 md:col-span-4 border-r">
-        <ChatList chats={chats} activeId={activeId} onSelect={handleSelect} />
+        <ChatList
+          chats={chats}
+          activeId={activeId}
+          onSelect={handleSelect}
+          loading={loadingChats}
+          error={chatError}
+        />
       </div>
+
       <div className="col-span-12 md:col-span-8">
-        <ChatWindow chat={activeChat} onSend={handleSend} />
+        {messageError && (
+          <div className="px-4 py-2 text-sm text-red-600 border-b bg-red-50">
+            {messageError}
+          </div>
+        )}
+
+        <ChatWindow
+          chat={activeChat}
+          messages={messages}
+          onSend={handleSend}
+          sending={sending}
+          loading={loadingMessages}
+        />
       </div>
     </div>
   );

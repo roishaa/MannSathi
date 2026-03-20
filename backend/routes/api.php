@@ -16,6 +16,7 @@ use App\Http\Controllers\Api\DebugController;
 use App\Http\Controllers\Api\CounselorDashboardController;
 use App\Http\Controllers\Api\GoogleAuthController;
 use App\Http\Controllers\Api\EsewaController;
+use App\Http\Controllers\Api\GuestBookingController;
 
 Route::get('/health', function () {
     return response()->json(['status' => 'ok']);
@@ -124,6 +125,15 @@ Route::post('/counselor/login', [CounselorAuthController::class, 'login']);
 Route::post('/admin/login', [AdminAuthController::class, 'login']);
 Route::post('/google-login', [GoogleAuthController::class, 'login']);
 
+// ================= PUBLIC COUNSELORS =================
+Route::get('/counselors', [CounselorPublicController::class, 'index']);
+Route::get('/guest-counselors/available', [CounselorPublicController::class, 'availableForGuest']);
+
+// ================= PUBLIC GUEST BOOKING =================
+Route::post('/guest-bookings', [GuestBookingController::class, 'store']);
+Route::get('/guest-session/{id}', [GuestBookingController::class, 'showGuestSession']);
+Route::post('/esewa/guest-pay', [EsewaController::class, 'guestPay']);
+
 // ================= ESEWA CALLBACK ROUTES (PUBLIC) =================
 Route::get('/esewa/success', [EsewaController::class, 'success']);
 Route::get('/esewa/failure', [EsewaController::class, 'failure']);
@@ -149,16 +159,13 @@ Route::middleware('multi.auth')->group(function () {
     Route::post('/counselor/notes', [CounselorDashboardController::class, 'saveNotes']);
     Route::get('/content/shared', [CounselorDashboardController::class, 'sharedContent']);
 
-    // ================= COUNSELORS =================
-    Route::get('/counselors', [CounselorPublicController::class, 'index']);
-
     // ================= MOOD =================
     Route::post('/user/mood-entries', [MoodController::class, 'store']);
     Route::get('/user/mood-entries', [MoodController::class, 'history']);
     Route::get('/user/mood-report/weekly', [MoodController::class, 'weeklyReport']);
     Route::get('/user/mood-report/monthly', [MoodController::class, 'monthlyReport']);
 
-    // Optional legacy
+    // ================= LEGACY MOOD =================
     Route::post('/mood', [MoodController::class, 'store']);
     Route::get('/mood/weekly', [MoodController::class, 'weekly']);
     Route::get('/mood/last-week', [MoodController::class, 'lastWeek']);

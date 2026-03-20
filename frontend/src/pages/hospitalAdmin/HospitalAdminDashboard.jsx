@@ -18,63 +18,60 @@ export default function HospitalAdminDashboard() {
   };
 
   return (
-    <div className="min-h-screen bg-[#f6f5f1] text-[#102a2a] flex">
+    <div className="min-h-screen bg-[#f5f6f3] text-[#102a2a] flex">
       {/* ===== SIDEBAR ===== */}
-      <aside className="hidden md:flex w-[290px] bg-[#0f2d2b] text-white flex-col relative overflow-hidden">
-        {/* subtle blobs */}
-        <div className="absolute -top-14 -right-16 h-48 w-48 rounded-full bg-[#f4b860]/20 blur-xl" />
-        <div className="absolute -bottom-20 -left-20 h-56 w-56 rounded-full bg-[#2b5f5a]/35 blur-xl" />
-
-        <div className="px-6 pt-7 pb-6 border-b border-white/10 relative z-10">
-          <div className="flex items-center gap-3">
-            <div className="h-11 w-11 rounded-2xl bg-white/10 flex items-center justify-center ring-1 ring-white/10">
-              <div className="h-6 w-6 rounded-lg bg-[#f4b860]" />
-            </div>
-            <div className="min-w-0">
-              <p className="text-[10px] tracking-[0.28em] text-white/60">
-                HOSPITAL ADMIN
-              </p>
-              <p className="font-semibold leading-tight truncate">
-                {hospitalName}
-              </p>
-              <p className="text-xs text-white/60 truncate mt-1">{email}</p>
-            </div>
-          </div>
+      <aside className="hidden md:flex w-[272px] border-r border-black/5 bg-[#f8faf7] relative">
+        <div className="absolute inset-0 pointer-events-none">
+          <div className="absolute top-8 left-4 h-28 w-28 rounded-full bg-[#d8ebe4]/70 blur-2xl" />
+          <div className="absolute bottom-8 right-3 h-28 w-28 rounded-full bg-[#f0e8d8]/70 blur-2xl" />
         </div>
 
-        <nav className="px-4 py-5 space-y-1 relative z-10">
-          <SidebarLink
-            to="/hospital-admin/dashboard"
-            label="Dashboard"
-            active={pathname === "/hospital-admin/dashboard"}
-          />
-          <SidebarLink
-            to="/hospital-admin/counselors"
-            label="Counselor Approval"
-            active={pathname.startsWith("/hospital-admin/counselors")}
-            badge="Priority"
-          />
-          <SidebarLink to="#" label="Appointments" disabled />
-          <SidebarLink to="#" label="Schedules" disabled />
-          <SidebarLink to="#" label="Reports" disabled />
-          <SidebarLink to="#" label="Settings" disabled />
-        </nav>
-
-        <div className="mt-auto p-4 border-t border-white/10 relative z-10">
-          <div className="rounded-2xl p-4 bg-white/5 ring-1 ring-white/10">
-            <p className="text-[11px] text-white/60">Logged in as</p>
-            <p className="text-sm font-semibold mt-1">{email}</p>
-            <p className="text-[11px] text-white/50 mt-2">
-              Manage counselor verification & onboarding.
-            </p>
+        <div className="relative z-10 flex h-full flex-col p-4">
+          <div className="rounded-3xl border border-black/5 bg-white/80 backdrop-blur p-4 shadow-sm">
+            <div className="flex items-center gap-3">
+              <div className="h-10 w-10 rounded-2xl bg-[#0f2d2b] text-white flex items-center justify-center font-bold text-sm">
+                MH
+              </div>
+              <div className="min-w-0">
+                <p className="text-[10px] tracking-[0.26em] text-[#6f6e6a]">HOSPITAL ADMIN</p>
+                <p className="font-semibold leading-tight truncate text-[#0f2d2b]">{hospitalName}</p>
+                <p className="text-xs text-[#6b6f6a] truncate mt-1">{email}</p>
+              </div>
+            </div>
           </div>
 
-          <button
-            onClick={handleLogout}
-            className="w-full mt-4 bg-[#f4b860] text-[#0f2d2b] py-3 rounded-2xl font-semibold hover:opacity-90 active:opacity-80 transition"
-          >
-            Logout
-          </button>
+          <nav className="mt-4 space-y-1.5 rounded-3xl border border-black/5 bg-white/80 backdrop-blur p-3 shadow-sm">
+            <SidebarLink
+              to="/hospital-admin/dashboard"
+              label="Dashboard"
+              active={pathname === "/hospital-admin/dashboard"}
+            />
+            <SidebarLink
+              to="/hospital-admin/counselors"
+              label="Counselor Approval"
+              active={pathname.startsWith("/hospital-admin/counselors")}
+              badge="Priority"
+            />
+            <SidebarLink to="#" label="Appointments" disabled />
+            <SidebarLink to="#" label="Schedules" disabled />
+            <SidebarLink to="#" label="Reports" disabled />
+            <SidebarLink to="#" label="Settings" disabled />
+          </nav>
+
+          <div className="mt-auto rounded-3xl border border-black/5 bg-white/80 backdrop-blur p-4 shadow-sm">
+            <p className="text-[11px] text-[#7c7b77]">Logged in as</p>
+            <p className="text-sm font-semibold mt-1 text-[#0f2d2b]">{email}</p>
+            <p className="text-[11px] text-[#6b6f6a] mt-2">
+              Manage counselor verification and onboarding operations.
+            </p>
+
+            <button
+              onClick={handleLogout}
+              className="w-full mt-4 bg-[#0f2d2b] text-white py-3 rounded-2xl font-semibold hover:opacity-90 active:opacity-80 transition shadow-sm"
+            >
+              Logout
+            </button>
+          </div>
         </div>
       </aside>
 
@@ -82,51 +79,58 @@ export default function HospitalAdminDashboard() {
       <main className="flex-1 relative">
         {/* background glow */}
         <div className="absolute inset-0 pointer-events-none">
-          <div className="absolute top-0 right-0 h-72 w-72 bg-[#f4b860]/20 blur-3xl" />
-          <div className="absolute bottom-0 left-0 h-72 w-72 bg-[#2b5f5a]/20 blur-3xl" />
+          <div className="absolute top-0 right-10 h-72 w-72 bg-[#e0ece6] blur-3xl" />
+          <div className="absolute top-24 left-12 h-72 w-72 bg-[#f3eadb] blur-3xl" />
         </div>
 
-        {/* TOP BAR */}
-        <header className="sticky top-0 z-20 backdrop-blur bg-[#f6f5f1]/70 border-b border-black/5">
-          <div className="px-5 md:px-10 py-5 flex items-center justify-between gap-4">
-            <div className="min-w-0">
-              <p className="text-[10px] tracking-[0.35em] text-[#6f6e6a]">
-                OPERATIONS
-              </p>
-              <h1 className="text-2xl md:text-3xl font-extrabold mt-1 text-[#0f2d2b]">
-                Hospital Command Center
-              </h1>
-              <p className="text-[#5f6562] text-sm mt-1 truncate">
-                Welcome back, <span className="font-semibold">{email}</span>
-              </p>
-            </div>
-
-            {/* Right controls */}
-            <div className="flex items-center gap-3">
-              <div className="hidden md:flex items-center gap-2 rounded-2xl bg-white/70 border border-black/5 px-3 py-2 shadow-sm">
-                <span className="text-xs text-[#7c7b77]">Search</span>
-                <input
-                  className="bg-transparent outline-none text-sm w-56"
-                  placeholder="Counselor name, ID, email..."
-                  disabled
-                />
+        {/* HERO HEADER */}
+        <header className="relative z-20 px-5 md:px-10 pt-8 md:pt-10">
+          <div className="rounded-3xl border border-black/5 bg-white/80 backdrop-blur p-6 md:p-8 shadow-sm">
+            <div className="flex flex-col xl:flex-row xl:items-start xl:justify-between gap-6">
+              <div className="min-w-0">
+                <div className="inline-flex items-center gap-2 rounded-full bg-[#f7fbf8] border border-[#dce9e2] px-3 py-1 shadow-sm">
+                  <span className="h-1.5 w-1.5 rounded-full bg-[#2b5f5a]" />
+                  <p className="text-[10px] tracking-[0.26em] text-[#6f6e6a]">HOSPITAL MANAGEMENT</p>
+                </div>
+                <p className="text-sm text-[#6f6e6a] mt-4">Welcome back</p>
+                <h1 className="text-3xl md:text-4xl font-extrabold mt-1 text-[#0f2d2b] leading-tight">
+                  {hospitalName}
+                </h1>
+                <p className="text-[#5f6562] text-sm md:text-base mt-3 max-w-2xl">
+                  Manage counselor approvals, monitor operations, and keep your hospital counseling workflows running smoothly.
+                </p>
               </div>
 
-              <Link
-                to="/hospital-admin/counselors"
-                className="hidden md:inline-flex items-center justify-center rounded-2xl px-4 py-2 bg-[#0f2d2b] text-white font-semibold text-sm hover:opacity-90 transition"
-              >
-                Open approvals
-              </Link>
+              <div className="flex flex-col sm:flex-row sm:items-center gap-3 xl:min-w-[420px] xl:justify-end">
+                <div className="flex items-center gap-2 rounded-2xl bg-white border border-black/5 px-3 py-2 shadow-sm">
+                  <span className="text-xs text-[#7c7b77]">Search</span>
+                  <input
+                    className="bg-transparent outline-none text-sm w-full sm:w-52"
+                    placeholder="Counselor name, ID, email..."
+                    disabled
+                  />
+                </div>
 
-              <button
-                onClick={handleLogout}
-                className="md:hidden bg-[#0f2d2b] text-white px-4 py-2 rounded-2xl hover:opacity-90 transition"
-              >
-                Logout
-              </button>
+                <Link
+                  to="/hospital-admin/counselors"
+                  className="inline-flex items-center justify-center rounded-2xl px-4 py-2.5 bg-[#0f2d2b] text-white font-semibold text-sm hover:opacity-90 transition shadow-sm"
+                >
+                  Open approvals
+                </Link>
+
+                <div className="hidden sm:flex items-center gap-2 rounded-2xl border border-black/5 bg-[#fbfaf6] px-3 py-2 shadow-sm">
+                  <span className="h-2 w-2 rounded-full bg-[#2b5f5a]" />
+                  <p className="text-xs text-[#4f5855] truncate max-w-[120px]">{email}</p>
+                </div>
+              </div>
             </div>
           </div>
+          <button
+            onClick={handleLogout}
+            className="md:hidden mt-4 bg-[#0f2d2b] text-white px-4 py-2 rounded-2xl hover:opacity-90 transition"
+          >
+            Logout
+          </button>
         </header>
 
         {/* CONTENT */}
@@ -160,7 +164,7 @@ export default function HospitalAdminDashboard() {
           </section>
 
           {/* Quick Actions */}
-          <section className="grid lg:grid-cols-3 gap-5">
+          <section className="grid grid-cols-1 gap-4">
             <ActionCard
               title="Counselor Approval"
               desc="Review documents, approve or reject applications, and unlock bookings."
@@ -189,7 +193,7 @@ export default function HospitalAdminDashboard() {
           {/* 2-col */}
           <section className="grid lg:grid-cols-3 gap-6">
             {/* Activity */}
-            <div className="lg:col-span-2 rounded-3xl bg-white/80 backdrop-blur border border-black/5 shadow-sm overflow-hidden">
+            <div className="lg:col-span-2 rounded-3xl bg-white/85 backdrop-blur border border-black/5 shadow-sm overflow-hidden">
               <div className="px-6 py-5 border-b border-black/5 flex items-center justify-between">
                 <div>
                   <h2 className="font-extrabold text-lg text-[#0f2d2b]">
@@ -204,19 +208,24 @@ export default function HospitalAdminDashboard() {
                 </span>
               </div>
 
-              <div className="p-6 space-y-4">
-                <ActivityRow
-                  title="Counselor submitted verification"
-                  meta="Pending review • 10 mins ago"
-                />
-                <ActivityRow
-                  title="New appointment booked"
-                  meta="User booked session • Today"
-                />
-                <ActivityRow
-                  title="Counselor approved"
-                  meta="Status updated • Yesterday"
-                />
+              <div className="p-6">
+                <div className="relative pl-3">
+                  <div className="absolute left-[18px] top-2 bottom-4 w-px bg-[#dfe4dc]" />
+                  <div className="space-y-4">
+                    <ActivityRow
+                      title="Counselor submitted verification"
+                      meta="Pending review • 10 mins ago"
+                    />
+                    <ActivityRow
+                      title="New appointment booked"
+                      meta="User booked session • Today"
+                    />
+                    <ActivityRow
+                      title="Counselor approved"
+                      meta="Status updated • Yesterday"
+                    />
+                  </div>
+                </div>
 
                 <div className="pt-1">
                   <Link
@@ -230,7 +239,7 @@ export default function HospitalAdminDashboard() {
             </div>
 
             {/* Hospital profile */}
-            <div className="rounded-3xl bg-white/80 backdrop-blur border border-black/5 shadow-sm overflow-hidden">
+            <div className="rounded-3xl bg-white/85 backdrop-blur border border-black/5 shadow-sm overflow-hidden">
               <div className="px-6 py-5 border-b border-black/5">
                 <h2 className="font-extrabold text-lg text-[#0f2d2b]">
                   Hospital Profile
@@ -240,7 +249,13 @@ export default function HospitalAdminDashboard() {
                 </p>
               </div>
 
-              <div className="p-6 space-y-3 text-sm text-[#2a3a3a]">
+              <div className="p-6 space-y-4 text-sm text-[#2a3a3a]">
+                <div className="rounded-2xl border border-black/5 bg-[#f9faf7] p-4 shadow-sm">
+                  <p className="text-[11px] tracking-[0.2em] text-[#7c7b77] uppercase">Profile Summary</p>
+                  <p className="mt-1 text-sm font-semibold text-[#0f2d2b] truncate">{hospitalName}</p>
+                  <p className="text-xs text-[#6b6f6a] mt-1 truncate">{email}</p>
+                </div>
+
                 <InfoLine label="Hospital" value={hospitalName} />
                 <InfoLine label="Hospital ID" value={admin?.hospital_id || "—"} />
                 <InfoLine label="Admin Email" value={email} />
@@ -248,14 +263,14 @@ export default function HospitalAdminDashboard() {
                 <div className="pt-4">
                   <button
                     disabled
-                    className="w-full py-3 rounded-2xl border border-dashed border-black/10 bg-[#fbf8f2] text-[#9a968f] cursor-not-allowed"
+                    className="w-full py-3 rounded-2xl border border-dashed border-black/10 bg-[#fbf8f2] text-[#9a968f] cursor-not-allowed shadow-sm"
                   >
                     Edit Profile (Next)
                   </button>
                 </div>
 
                 <div className="pt-2">
-                  <div className="rounded-2xl bg-[#0f2d2b]/5 border border-black/5 p-4">
+                  <div className="rounded-2xl bg-[#0f2d2b]/5 border border-black/5 p-4 shadow-sm">
                     <p className="text-xs text-[#6b6f6a]">
                       Tip: Approve counselors first so users can start booking.
                     </p>
@@ -279,18 +294,21 @@ export default function HospitalAdminDashboard() {
 
 function SidebarLink({ to, label, active, disabled, badge }) {
   const base =
-    "w-full flex items-center justify-between px-4 py-3 rounded-2xl text-sm font-semibold transition";
+    "w-full flex items-center justify-between px-3.5 py-3 rounded-2xl text-sm font-semibold transition-all duration-200";
   const enabledStyle = active
-    ? "bg-white/10 text-white ring-1 ring-white/15"
-    : "hover:bg-white/10 text-white/80";
+    ? "bg-[#eef5f2] text-[#0f2d2b] ring-1 ring-[#d7e5df] shadow-sm"
+    : "hover:bg-[#f2f6f3] text-[#4f5855]";
   const disabledStyle =
-    "bg-white/5 text-white/40 cursor-not-allowed ring-1 ring-white/10";
+    "bg-[#f6f8f6] text-[#98a09d] cursor-not-allowed ring-1 ring-[#e8ece8]";
 
   if (disabled) {
     return (
       <div className={`${base} ${disabledStyle}`}>
-        <span>{label}</span>
-        <span className="text-[10px] px-2 py-1 rounded-full bg-white/10 border border-white/10">
+        <span className="flex items-center gap-2">
+          <span className="h-1.5 w-1.5 rounded-full bg-[#c4cbc8]" />
+          {label}
+        </span>
+        <span className="text-[10px] px-2 py-1 rounded-full bg-white border border-[#e2e6e3]">
           Soon
         </span>
       </div>
@@ -300,14 +318,15 @@ function SidebarLink({ to, label, active, disabled, badge }) {
   return (
     <Link to={to} className={`${base} ${enabledStyle}`}>
       <span className="flex items-center gap-2">
+        <span className={`h-1.5 w-1.5 rounded-full ${active ? "bg-[#2b5f5a]" : "bg-[#b7bfbc]"}`} />
         {label}
         {badge ? (
-          <span className="text-[10px] px-2 py-1 rounded-full bg-[#f4b860]/15 text-[#f4b860] border border-[#f4b860]/25">
+          <span className="text-[10px] px-2 py-1 rounded-full bg-[#f4b860]/15 text-[#915c10] border border-[#f4b860]/25">
             {badge}
           </span>
         ) : null}
       </span>
-      <span className="text-[10px] px-2 py-1 rounded-full bg-white/10 border border-white/10">
+      <span className="text-[10px] px-2 py-1 rounded-full bg-white border border-[#e2e6e3] text-[#6b6f6a]">
         Go
       </span>
     </Link>
@@ -317,24 +336,27 @@ function SidebarLink({ to, label, active, disabled, badge }) {
 function StatCard({ title, value, hint, tone }) {
   const toneMap = {
     amber: {
-      chip: "bg-[#f4b860]/15 text-[#915c10] border-[#f4b860]/25",
+      chip: "bg-[#f4b860]/20 text-[#915c10] border-[#f4b860]/25",
       dot: "bg-[#f4b860]",
+      bg: "from-[#fff9ed] to-[#fffdf7]",
     },
     teal: {
       chip: "bg-[#2b5f5a]/15 text-[#0f2d2b] border-[#2b5f5a]/25",
       dot: "bg-[#2b5f5a]",
+      bg: "from-[#f1f8f5] to-[#fbfdfa]",
     },
     ink: {
       chip: "bg-[#0f2d2b]/10 text-[#0f2d2b] border-black/10",
       dot: "bg-[#0f2d2b]",
+      bg: "from-[#f3f6f5] to-[#fbfcfb]",
     },
   };
   const t = toneMap[tone] || toneMap.ink;
 
   return (
-    <div className="rounded-3xl bg-white/80 backdrop-blur border border-black/5 shadow-sm p-5">
+    <div className={`rounded-3xl border border-black/5 shadow-sm p-5 hover:shadow-md transition bg-gradient-to-br ${t.bg}`}>
       <div className="flex items-center justify-between">
-        <p className="text-xs text-[#7c7b77]">{title}</p>
+        <p className="text-xs text-[#7c7b77] uppercase tracking-wide">{title}</p>
         <span
           className={`text-[10px] px-2 py-1 rounded-full border ${t.chip}`}
         >
@@ -348,7 +370,7 @@ function StatCard({ title, value, hint, tone }) {
           <p className="text-sm text-[#6b6f6a] mt-1">{hint}</p>
         </div>
 
-        <div className="h-10 w-10 rounded-2xl bg-black/5 flex items-center justify-center border border-black/5">
+        <div className="h-10 w-10 rounded-2xl bg-black/5 flex items-center justify-center border border-black/5 shadow-sm">
           <div className={`h-2.5 w-2.5 rounded-full ${t.dot}`} />
         </div>
       </div>
@@ -358,41 +380,50 @@ function StatCard({ title, value, hint, tone }) {
 
 function ActionCard({ title, desc, badge, to, buttonText, disabled }) {
   const wrap =
-    "rounded-3xl bg-white/80 backdrop-blur border border-black/5 shadow-sm p-6 flex flex-col justify-between";
+    "rounded-3xl bg-white/85 backdrop-blur border border-black/5 shadow-sm p-6 flex items-center justify-between gap-6 hover:shadow-md transition";
   const btnEnabled =
-    "w-full mt-5 bg-[#0f2d2b] text-white py-3 rounded-2xl hover:opacity-90 active:opacity-80 text-sm font-semibold transition text-center";
+    "w-full mt-5 bg-[#0f2d2b] text-white py-3 rounded-2xl hover:opacity-90 active:opacity-80 text-sm font-semibold transition text-center shadow-sm";
   const btnDisabled =
     "w-full mt-5 bg-[#fbf8f2] text-[#a09a91] py-3 rounded-2xl cursor-not-allowed text-sm font-semibold border border-black/5";
 
   return (
     <div className={wrap}>
-      <div>
+      <div className="flex items-start gap-4">
+        <div className="h-12 w-12 rounded-2xl bg-[#f3f6f3] border border-black/5 flex items-center justify-center shadow-sm">
+          <div className="h-2.5 w-2.5 rounded-full bg-[#2b5f5a]" />
+        </div>
+
+        <div>
         <div className="flex items-start justify-between gap-3">
           <h3 className="text-lg font-extrabold text-[#0f2d2b]">{title}</h3>
-          <span className="text-[10px] px-2 py-1 rounded-full border border-black/5 bg-[#fbf8f2] text-[#6b6f6a]">
+          <span className="text-[10px] px-2 py-1 rounded-full border border-black/5 bg-[#fbf8f2] text-[#6b6f6a] shadow-sm">
             {badge}
           </span>
         </div>
         <p className="text-sm text-[#5f6562] mt-2">{desc}</p>
+        </div>
       </div>
 
-      {disabled ? (
-        <button disabled className={btnDisabled}>
-          {buttonText}
-        </button>
-      ) : (
-        <Link to={to} className={btnEnabled}>
-          {buttonText}
-        </Link>
-      )}
+      <div className="w-full max-w-[180px]">
+        {disabled ? (
+          <button disabled className={btnDisabled}>
+            {buttonText}
+          </button>
+        ) : (
+          <Link to={to} className={btnEnabled}>
+            {buttonText}
+          </Link>
+        )}
+      </div>
     </div>
   );
 }
 
 function ActivityRow({ title, meta }) {
   return (
-    <div className="flex items-start gap-3">
-      <div className="h-10 w-10 rounded-2xl bg-[#0f2d2b]/10 flex items-center justify-center border border-black/5">
+    <div className="relative flex items-start gap-3 rounded-2xl border border-black/5 bg-[#fcfaf6] px-3 py-3 ml-3">
+      <div className="absolute -left-[18px] top-5 h-3 w-3 rounded-full bg-[#2b5f5a] border border-white shadow-sm" />
+      <div className="h-10 w-10 rounded-2xl bg-[#0f2d2b]/10 flex items-center justify-center border border-black/5 shadow-sm">
         <div className="h-2.5 w-2.5 rounded-full bg-[#0f2d2b]" />
       </div>
       <div className="flex-1">
@@ -405,7 +436,7 @@ function ActivityRow({ title, meta }) {
 
 function InfoLine({ label, value }) {
   return (
-    <div className="flex items-start justify-between gap-4">
+    <div className="flex items-start justify-between gap-4 rounded-2xl border border-black/5 bg-[#fcfaf6] px-4 py-3">
       <p className="text-[#7c7b77]">{label}</p>
       <p className="font-semibold text-right text-[#0f2d2b]">{value}</p>
     </div>
