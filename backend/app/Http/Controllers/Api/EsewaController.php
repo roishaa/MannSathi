@@ -3,12 +3,14 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Mail\BookingConfirmedMail;
 use App\Models\Appointment;
 use App\Models\GuestBooking;
 use App\Models\PendingPayment;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 
 class EsewaController extends Controller
 {
@@ -286,66 +288,83 @@ class EsewaController extends Controller
         }
 
         if ($guestBooking) {
-    if ($guestBooking->payment_status === 'paid' && $guestBooking->booking_status === 'confirmed') {
-        return redirect(
-            'http://localhost:5173/guest-session/' .
-            $guestBooking->id .
-            '?token=' .
-            $guestBooking->guest_token
-        );
-    }
+            if ($guestBooking->payment_status === 'paid' && $guestBooking->booking_status === 'confirmed') {
+                return redirect(
+                    'http://localhost:5173/guest-session/' .
+                    $guestBooking->id .
+                    '?token=' .
+                    $guestBooking->guest_token
+                );
+            }
 
-    $dateTime = Carbon::createFromFormat(
-        'Y-m-d H:i',
-        $guestBooking->date . ' ' . Carbon::parse($guestBooking->time)->format('H:i')
-    )->format('Y-m-d H:i:s');
+            $dateTime = Carbon::createFromFormat(
+                'Y-m-d H:i',
+                $guestBooking->date . ' ' . Carbon::parse($guestBooking->time)->format('H:i')
+            )->format('Y-m-d H:i:s');
 
-    $alreadyBooked = Appointment::where('counselor_id', $guestBooking->counselor_id)
-        ->where('date_time', $dateTime)
-        ->whereNotIn('status', ['cancelled'])
-        ->exists();
+            $alreadyBooked = Appointment::where('counselor_id', $guestBooking->counselor_id)
+                ->where('date_time', $dateTime)
+                ->whereNotIn('status', ['cancelled'])
+                ->exists();
 
-    if ($alreadyBooked) {
-        $guestBooking->update([
-            'payment_status' => 'failed',
-            'booking_status' => 'cancelled',
-            'payment_reference' => $transactionUuid,
-        ]);
+            if ($alreadyBooked) {
+                $guestBooking->update([
+                    'payment_status' => 'failed',
+                    'booking_status' => 'cancelled',
+                    'payment_reference' => $transactionUuid,
+                ]);
 
-        return redirect('http://localhost:5173/payment-failed?reason=slot-taken');
-    }
+                return redirect('http://localhost:5173/payment-failed?reason=slot-taken');
+            }
 
-    $appointment = Appointment::create([
-        'user_id' => null,
-        'counselor_id' => $guestBooking->counselor_id,
-        'date_time' => $dateTime,
-        'type' => $guestBooking->session_type,
-        'name' => $guestBooking->guest_name,
-        'nickname' => null,
-        'email' => $guestBooking->guest_email,
-        'phone' => $guestBooking->guest_phone,
-        'status' => 'confirmed',
-        'payment_method' => 'esewa',
-        'payment_status' => 'paid',
-        'amount' => $totalAmount,
-        'transaction_ref' => $transactionUuid,
-    ]);
+            $appointment = Appointment::create([
+                'user_id' => null,
+                'counselor_id' => $guestBooking->counselor_id,
+                'date_time' => $dateTime,
+                'type' => $guestBooking->session_type,
+                'name' => $guestBooking->guest_name,
+                'nickname' => null,
+                'email' => $guestBooking->guest_email,
+                'phone' => $guestBooking->guest_phone,
+                'status' => 'confirmed',
+                'payment_method' => 'esewa',
+                'payment_status' => 'paid',
+                'amount' => $totalAmount,
+                'transaction_ref' => $transactionUuid,
+            ]);
 
-    $guestBooking->update([
-        'payment_status' => 'paid',
-        'booking_status' => 'confirmed',
-        'payment_reference' => $transactionUuid,
-    ]);
+            $guestBooking->update([
+                'payment_status' => 'paid',
+                'booking_status' => 'confirmed',
+                'payment_reference' => $transactionUuid,
+            ]);
 
-    return redirect(
-        'http://localhost:5173/guest-session/' .
-        $guestBooking->id .
-        '?token=' .
-        $guestBooking->guest_token .
-        '&appointment_id=' .
-        $appointment->id
-    );
-}
+            try {
+                $guestLink = 'http://localhost:5173/guest-session/' . $guestBooking->id . '?token=' . $guestBooking->guest_token;
+
+                $bookingData = [
+                    'name' => $guestBooking->guest_name ?? 'Guest',
+                    'counselor_name' => 'Assigned Counselor',
+                    'date' => $guestBooking->date,
+                    'time' => Carbon::parse($guestBooking->time)->format('h:i A'),
+                    'session_link' => $guestLink,
+                ];
+
+                Mail::to($guestBooking->guest_email)->send(new BookingConfirmedMail($bookingData));
+            } catch (\Exception $e) {
+                Log::error('Guest booking email failed: ' . $e->getMessage());
+            }
+
+            return redirect(
+                'http://localhost:5173/guest-session/' .
+                $guestBooking->id .
+                '?token=' .
+                $guestBooking->guest_token .
+                '&appointment_id=' .
+                $appointment->id
+            );
+        }
+
         if ($pendingPayment->status === 'completed') {
             $existingAppointment = Appointment::where('transaction_ref', $transactionUuid)->first();
 
@@ -399,6 +418,20 @@ class EsewaController extends Controller
             'gateway_response' => json_encode($responseData),
         ]);
 
+        try {
+            $bookingData = [
+                'name' => $pendingPayment->name ?? 'User',
+                'counselor_name' => 'Assigned Counselor',
+                'date' => $datePart,
+                'time' => Carbon::parse($timePart)->format('h:i A'),
+                'session_link' => null,
+            ];
+
+            Mail::to($pendingPayment->email)->send(new BookingConfirmedMail($bookingData));
+        } catch (\Exception $e) {
+            Log::error('User booking email failed: ' . $e->getMessage());
+        }
+
         return redirect('http://localhost:5173/payment-success?appointment_id=' . $appointment->id);
     }
 
@@ -427,5 +460,179 @@ class EsewaController extends Controller
         }
 
         return redirect('http://localhost:5173/payment-failed');
+    }
+
+    public function simulateSuccess($transaction_uuid)
+    {
+        $pendingPayment = PendingPayment::where('transaction_uuid', $transaction_uuid)->first();
+
+        if (!$pendingPayment) {
+            return response()->json([
+                'message' => 'Payment not found'
+            ], 404);
+        }
+
+        if ($pendingPayment->status === 'completed') {
+            $existingAppointment = Appointment::where('transaction_ref', $transaction_uuid)->first();
+
+            if ($existingAppointment) {
+                return redirect('http://localhost:5173/payment-success?appointment_id=' . $existingAppointment->id);
+            }
+
+            return redirect('http://localhost:5173/payment-success');
+        }
+
+        $datePart = Carbon::parse($pendingPayment->appointment_date)->format('Y-m-d');
+        $timePart = Carbon::parse($pendingPayment->appointment_time)->format('H:i:s');
+
+        $dateTime = Carbon::createFromFormat(
+            'Y-m-d H:i:s',
+            $datePart . ' ' . $timePart
+        )->format('Y-m-d H:i:s');
+
+        $alreadyBooked = Appointment::where('counselor_id', $pendingPayment->counselor_id)
+            ->where('date_time', $dateTime)
+            ->whereNotIn('status', ['cancelled'])
+            ->exists();
+
+        if ($alreadyBooked) {
+            $pendingPayment->update([
+                'status' => 'failed',
+                'gateway_response' => json_encode([
+                    'message' => 'Slot already taken during simulated payment'
+                ]),
+            ]);
+
+            return redirect('http://localhost:5173/payment-failed?reason=slot-taken');
+        }
+
+        $appointment = Appointment::create([
+            'user_id' => $pendingPayment->user_id,
+            'counselor_id' => $pendingPayment->counselor_id,
+            'date_time' => $dateTime,
+            'type' => $pendingPayment->type,
+            'name' => $pendingPayment->name,
+            'nickname' => $pendingPayment->nickname,
+            'email' => $pendingPayment->email,
+            'phone' => $pendingPayment->phone,
+            'status' => 'confirmed',
+            'payment_method' => 'esewa',
+            'payment_status' => 'paid',
+            'amount' => $pendingPayment->amount,
+            'transaction_ref' => $pendingPayment->transaction_uuid,
+        ]);
+
+        $pendingPayment->update([
+            'status' => 'completed',
+            'gateway_response' => json_encode([
+                'message' => 'Simulated eSewa success'
+            ]),
+        ]);
+
+        try {
+            $bookingData = [
+                'name' => $pendingPayment->name ?? 'User',
+                'counselor_name' => 'Assigned Counselor',
+                'date' => $datePart,
+                'time' => Carbon::parse($timePart)->format('h:i A'),
+                'session_link' => null,
+            ];
+
+            Mail::to($pendingPayment->email)->send(new BookingConfirmedMail($bookingData));
+        } catch (\Exception $e) {
+            Log::error('Simulated user booking email failed: ' . $e->getMessage());
+        }
+
+        return redirect('http://localhost:5173/payment-success?appointment_id=' . $appointment->id);
+    }
+
+    public function guestSimulateSuccess($guest_booking_id)
+    {
+        $guestBooking = GuestBooking::find($guest_booking_id);
+
+        if (!$guestBooking) {
+            return response()->json([
+                'message' => 'Guest booking not found'
+            ], 404);
+        }
+
+        if ($guestBooking->payment_status === 'paid' && $guestBooking->booking_status === 'confirmed') {
+            return redirect(
+                'http://localhost:5173/guest-session/' .
+                $guestBooking->id .
+                '?token=' .
+                $guestBooking->guest_token
+            );
+        }
+
+        $datePart = Carbon::parse($guestBooking->date)->format('Y-m-d');
+        $timePart = Carbon::parse($guestBooking->time)->format('H:i:s');
+
+        $dateTime = Carbon::createFromFormat(
+            'Y-m-d H:i:s',
+            $datePart . ' ' . $timePart
+        )->format('Y-m-d H:i:s');
+
+        $alreadyBooked = Appointment::where('counselor_id', $guestBooking->counselor_id)
+            ->where('date_time', $dateTime)
+            ->whereNotIn('status', ['cancelled'])
+            ->exists();
+
+        if ($alreadyBooked) {
+            $guestBooking->update([
+                'payment_status' => 'failed',
+                'booking_status' => 'cancelled',
+                'payment_reference' => $guestBooking->transaction_uuid,
+            ]);
+
+            return redirect('http://localhost:5173/payment-failed?reason=slot-taken');
+        }
+
+        $appointment = Appointment::create([
+            'user_id' => null,
+            'counselor_id' => $guestBooking->counselor_id,
+            'date_time' => $dateTime,
+            'type' => $guestBooking->session_type,
+            'name' => $guestBooking->guest_name,
+            'nickname' => null,
+            'email' => $guestBooking->guest_email,
+            'phone' => $guestBooking->guest_phone,
+            'status' => 'confirmed',
+            'payment_method' => 'esewa',
+            'payment_status' => 'paid',
+            'amount' => $guestBooking->amount,
+            'transaction_ref' => $guestBooking->transaction_uuid,
+        ]);
+
+        $guestBooking->update([
+            'payment_status' => 'paid',
+            'booking_status' => 'confirmed',
+            'payment_reference' => $guestBooking->transaction_uuid,
+        ]);
+
+        try {
+            $guestLink = 'http://localhost:5173/guest-session/' . $guestBooking->id . '?token=' . $guestBooking->guest_token;
+
+            $bookingData = [
+                'name' => $guestBooking->guest_name ?? 'Guest',
+                'counselor_name' => 'Assigned Counselor',
+                'date' => $datePart,
+                'time' => Carbon::parse($timePart)->format('h:i A'),
+                'session_link' => $guestLink,
+            ];
+
+            Mail::to($guestBooking->guest_email)->send(new BookingConfirmedMail($bookingData));
+        } catch (\Exception $e) {
+            Log::error('Simulated guest booking email failed: ' . $e->getMessage());
+        }
+
+        return redirect(
+            'http://localhost:5173/guest-session/' .
+            $guestBooking->id .
+            '?token=' .
+            $guestBooking->guest_token .
+            '&appointment_id=' .
+            $appointment->id
+        );
     }
 }

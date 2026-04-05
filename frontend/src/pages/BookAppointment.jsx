@@ -66,6 +66,12 @@ export default function BookAppointment() {
   const [loadingCounselors, setLoadingCounselors] = useState(false);
   const [counselorsError, setCounselorsError] = useState("");
   const [counselors, setCounselors] = useState([]);
+  const [pageError, setPageError] = useState("");
+  const [successMessage, setSuccessMessage] = useState("");
+
+  const [paymentData, setPaymentData] = useState(null);
+  const [guestBookingId, setGuestBookingId] = useState(null);
+  const [guestTransactionUuid, setGuestTransactionUuid] = useState("");
 
   const [formData, setFormData] = useState({
     counselor: "",
@@ -125,10 +131,7 @@ export default function BookAppointment() {
     if (period.toLowerCase() === "pm" && hours !== 12) hours += 12;
     if (period.toLowerCase() === "am" && hours === 12) hours = 0;
 
-    return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(
-      2,
-      "0"
-    )}`;
+    return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
   };
 
   const formatDateForBackend = (
@@ -137,9 +140,7 @@ export default function BookAppointment() {
     date = formData.date
   ) => {
     const monthIndex = months.indexOf(month) + 1;
-    return `${year}-${String(monthIndex).padStart(2, "0")}-${String(
-      date
-    ).padStart(2, "0")}`;
+    return `${year}-${String(monthIndex).padStart(2, "0")}-${String(date).padStart(2, "0")}`;
   };
 
   const fetchAvailableCounselors = async (date, time) => {
@@ -147,6 +148,7 @@ export default function BookAppointment() {
       setLoadingCounselors(true);
       setCounselorsError("");
       setCounselors([]);
+      setPageError("");
 
       const res = await API.get("/guest-counselors/available", {
         params: { date, time },
@@ -165,9 +167,7 @@ export default function BookAppointment() {
       setCounselors(normalized);
 
       if (normalized.length === 0) {
-        setCounselorsError(
-          "No counselors are available for this selected time slot."
-        );
+        setCounselorsError("No counselors are available for this selected time slot.");
       }
     } catch (err) {
       console.error("Failed to fetch available counselors:", err);
@@ -187,6 +187,11 @@ export default function BookAppointment() {
     setSelectedDayIndex(index);
     setCounselors([]);
     setCounselorsError("");
+    setPageError("");
+    setPaymentData(null);
+    setGuestBookingId(null);
+    setGuestTransactionUuid("");
+    setSuccessMessage("");
 
     setFormData((prev) => ({
       ...prev,
@@ -213,6 +218,11 @@ export default function BookAppointment() {
     setSelectedTime(slot);
     setCounselors([]);
     setCounselorsError("");
+    setPageError("");
+    setPaymentData(null);
+    setGuestBookingId(null);
+    setGuestTransactionUuid("");
+    setSuccessMessage("");
 
     setFormData((prev) => ({
       ...prev,
@@ -246,6 +256,11 @@ export default function BookAppointment() {
     setFormData(updatedForm);
     setCounselors([]);
     setCounselorsError("");
+    setPageError("");
+    setPaymentData(null);
+    setGuestBookingId(null);
+    setGuestTransactionUuid("");
+    setSuccessMessage("");
 
     if (selectedTime) {
       const backendDate = formatDateForBackend(
@@ -260,12 +275,10 @@ export default function BookAppointment() {
 
   const canContinue = useMemo(() => {
     if (step === 1) return !!formData.date && !!formData.time;
-    if (step === 2)
-      return (
-        !!formData.counselor && !!formData.counselorId && !loadingCounselors
-      );
-    if (step === 3)
-      return !!formData.name && !!formData.email && !!formData.phone;
+    if (step === 2) {
+      return !!formData.counselor && !!formData.counselorId && !loadingCounselors;
+    }
+    if (step === 3) return !!formData.name && !!formData.email && !!formData.phone;
     if (step === 4) return !!formData.paymentMethod && !loading;
     return true;
   }, [step, formData, loading, loadingCounselors]);
@@ -287,12 +300,7 @@ export default function BookAppointment() {
     form.submit();
   };
 
-  const handleNext = async () => {
-    if (step < 4) {
-      setStep((s) => s + 1);
-      return;
-    }
-
+  const initializeGuestEsewaPayment = async () => {
     if (formData.paymentMethod !== "esewa") {
       alert("Currently only eSewa is connected for guest booking.");
       return;
@@ -300,6 +308,11 @@ export default function BookAppointment() {
 
     try {
       setLoading(true);
+      setPageError("");
+      setSuccessMessage("");
+      setPaymentData(null);
+      setGuestBookingId(null);
+      setGuestTransactionUuid("");
 
       const bookingPayload = {
         counselor_id: Number(formData.counselorId),
@@ -330,15 +343,40 @@ export default function BookAppointment() {
         throw new Error("Invalid payment response from server.");
       }
 
-      submitEsewaForm(payment_url, form_fields);
+      setGuestBookingId(booking.id);
+      setGuestTransactionUuid(form_fields.transaction_uuid || booking.transaction_uuid || "");
+      setPaymentData({
+        payment_url,
+        form_fields,
+      });
+      setSuccessMessage("Guest payment initialized. Continue to eSewa or simulate success for demo.");
     } catch (err) {
       console.error("Guest booking failed:", err);
       const message =
         err?.response?.data?.message ||
         "Booking failed. Please check the slot and try again.";
-      alert(message);
+      setPageError(message);
+    } finally {
       setLoading(false);
     }
+  };
+
+  const handleGuestSimulateSuccess = () => {
+    if (!guestBookingId) {
+      setPageError("No guest booking found. Please initialize payment first.");
+      return;
+    }
+
+    window.location.href = `http://127.0.0.1:8000/api/guest-simulate-success/${guestBookingId}`;
+  };
+
+  const handleNext = async () => {
+    if (step < 4) {
+      setStep((s) => s + 1);
+      return;
+    }
+
+    await initializeGuestEsewaPayment();
   };
 
   const handleBack = () => setStep((s) => Math.max(1, s - 1));
@@ -346,6 +384,22 @@ export default function BookAppointment() {
 
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_#f4fbf6,_#f8f8f4_45%,_#ffffff_75%)] pt-28">
+      {pageError && (
+        <div className="mx-auto max-w-6xl px-6 mb-4">
+          <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {pageError}
+          </div>
+        </div>
+      )}
+
+      {successMessage && (
+        <div className="mx-auto max-w-6xl px-6 mb-4">
+          <div className="rounded-2xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
+            {successMessage}
+          </div>
+        </div>
+      )}
+
       <header className="fixed top-0 left-0 w-full z-50 bg-white/95 backdrop-blur border-b border-[#f0f0f0]">
         <div className="mx-auto max-w-6xl flex items-center justify-between px-6 py-4">
           <Link to="/" className="relative block select-none">
@@ -681,8 +735,7 @@ export default function BookAppointment() {
                   <div className="grid grid-cols-1 sm:grid-cols-[220px_1fr] gap-4 items-start">
                     <div className="space-y-2">
                       <label className="text-sm font-medium text-neutral-800">
-                        Guest Counselor Selection{" "}
-                        <span className="text-red-500">*</span>
+                        Guest Counselor Selection <span className="text-red-500">*</span>
                       </label>
 
                       <select
@@ -823,8 +876,7 @@ export default function BookAppointment() {
               {step === 4 && (
                 <div className="space-y-6">
                   <p className="text-sm text-neutral-600">
-                    Review your guest booking and payment before proceeding to
-                    eSewa.
+                    Review your guest booking and payment before proceeding.
                   </p>
 
                   <div className="rounded-2xl border border-[#dce8df] bg-[#f8fcf9] px-5 py-4 text-sm text-neutral-700">
@@ -879,10 +931,71 @@ export default function BookAppointment() {
                     </select>
                   </div>
 
-                  <div className="rounded-2xl border border-[#e3ebdf] bg-white px-4 py-3 text-xs text-neutral-500">
-                    After successful payment, your guest booking confirmation and
-                    follow-up details continue through the payment flow.
-                  </div>
+                  {!paymentData ? (
+                    <div className="rounded-2xl border border-[#e3ebdf] bg-white px-4 py-4 text-xs text-neutral-500 space-y-3">
+                      <div>
+                        After successful payment, your guest booking confirmation and
+                        follow-up details continue through the payment flow.
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={initializeGuestEsewaPayment}
+                        disabled={!canContinue || loading}
+                        className="inline-flex items-center rounded-full border border-[#89ad8f] bg-[#e3f3e6]
+                                   px-7 py-3 text-sm font-semibold text-[#305b39]
+                                   shadow-[0_4px_0_0_#89ad8f] hover:translate-y-[1px]
+                                   hover:shadow-[0_3px_0_0_#89ad8f] transition
+                                   disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {loading ? "Initializing..." : "Initialize eSewa Payment"}
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="space-y-3 rounded-2xl border border-green-200 bg-green-50 px-4 py-4">
+                      <div className="text-sm text-green-800">
+                        Guest payment initialized successfully.
+                      </div>
+                      <div className="text-xs text-green-700">
+                        Booking ID: <span className="font-semibold">{guestBookingId}</span>
+                        <br />
+                        Transaction: <span className="font-semibold">{guestTransactionUuid}</span>
+                      </div>
+
+                      <div className="flex flex-wrap gap-3">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            submitEsewaForm(paymentData.payment_url, paymentData.form_fields)
+                          }
+                          className="inline-flex items-center rounded-full bg-[#215c4c] px-6 py-3 text-sm font-semibold text-white hover:opacity-95"
+                        >
+                          Continue to eSewa
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={handleGuestSimulateSuccess}
+                          className="inline-flex items-center rounded-full bg-blue-600 px-6 py-3 text-sm font-semibold text-white hover:bg-blue-700"
+                        >
+                          Simulate Success
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setPaymentData(null);
+                            setGuestBookingId(null);
+                            setGuestTransactionUuid("");
+                            setSuccessMessage("");
+                          }}
+                          className="inline-flex items-center rounded-full border border-[#d1d5db] bg-white px-6 py-3 text-sm font-semibold text-neutral-700"
+                        >
+                          Re-initialize
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -897,22 +1010,24 @@ export default function BookAppointment() {
                   "Your guest booking will be confirmed after successful payment."}
               </div>
 
-              <button
-                type="button"
-                onClick={handleNext}
-                disabled={!canContinue || loading}
-                className="inline-flex items-center rounded-full border border-[#89ad8f] bg-[#e3f3e6]
-                           px-7 py-3 text-sm font-semibold text-[#305b39]
-                           shadow-[0_4px_0_0_#89ad8f] hover:translate-y-[1px]
-                           hover:shadow-[0_3px_0_0_#89ad8f] transition
-                           disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {loading
-                  ? "Processing..."
-                  : step === 4
-                  ? "Confirm & Pay"
-                  : "Continue"}
-              </button>
+              {step < 4 ? (
+                <button
+                  type="button"
+                  onClick={handleNext}
+                  disabled={!canContinue || loading}
+                  className="inline-flex items-center rounded-full border border-[#89ad8f] bg-[#e3f3e6]
+                             px-7 py-3 text-sm font-semibold text-[#305b39]
+                             shadow-[0_4px_0_0_#89ad8f] hover:translate-y-[1px]
+                             hover:shadow-[0_3px_0_0_#89ad8f] transition
+                             disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Continue
+                </button>
+              ) : (
+                <div className="text-xs text-neutral-500">
+                  Use the payment actions above.
+                </div>
+              )}
             </div>
           </div>
         </div>

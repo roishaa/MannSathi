@@ -16,6 +16,7 @@ import GuestSession from "./pages/GuestSession";
 import CounselorSignup from "./pages/counselor/CounselorSignup";
 import CounselorLogin from "./pages/counselor/CounselorLogin";
 import CounselorDashboard from "./pages/counselor/CounselorDashboard";
+import CounselorRoute from "./routes/CounselorRoute";
 
 // ================= USER PAGES =================
 import MoodCheckIn from "./pages/users/MoodCheckIn";
@@ -30,6 +31,7 @@ import DebugAuth from "./pages/DebugAuth";
 import PaymentSuccess from "./pages/users/PaymentSuccess";
 import PaymentFailed from "./pages/users/PaymentFailed";
 import Sessions from "./pages/users/Sessions";
+import Resources from "./pages/users/Resources";
 
 // ================= TOPIC PAGES =================
 import Anxiety from "./pages/topics/Anxiety";
@@ -50,6 +52,9 @@ import PlatformAdminRoute from "./routes/PlatformAdminRoute";
 import HospitalAdminDashboard from "./pages/hospitalAdmin/HospitalAdminDashboard";
 import HospitalAdminRoute from "./routes/HospitalAdminRoute";
 import CounselorApproval from "./pages/hospitalAdmin/CounselorApproval";
+import HospitalAdminSchedules from "./pages/hospitalAdmin/HospitalAdminSchedules";
+import AppointmentsPreview from "./pages/hospitalAdmin/AppointmentsPreview";
+import HospitalAdminPatients from "./pages/hospitalAdmin/HospitalAdminPatients";
 import UserRoute from "./routes/UserRoute";
 
 // Optional: Unauthorized page (recommended)
@@ -83,7 +88,9 @@ function App() {
         {/* ================= COUNSELOR ROUTES ================= */}
         <Route path="/counselor/signup" element={<CounselorSignup />} />
         <Route path="/counselor/login" element={<CounselorLogin />} />
-        <Route path="/counselor/dashboard" element={<CounselorDashboard />} />
+        <Route element={<CounselorRoute />}>
+  <Route path="/counselor/dashboard" element={<CounselorDashboard />} />
+</Route>
 
         {/* ================= USER ROUTES (PROTECTED) ================= */}
         <Route element={<UserRoute />}>
@@ -93,13 +100,14 @@ function App() {
           <Route path="/users/BookAppointmentUser" element={<AppointmentBooking />} />
           <Route path="/payments" element={<Payments />} />
           <Route path="/settings" element={<UserSettings />} />
-          <Route path="/chat" element={<Chat />} />
+          <Route path="/users/chat/:id" element={<Chat />} />
           <Route path="/search-doctor" element={<SearchDoctor />} />
           <Route path="/test-auth" element={<TestAuth />} />
           <Route path="/debug-auth" element={<DebugAuth />} />
           <Route path="/payment-success" element={<PaymentSuccess />} />
           <Route path="/payment-failed" element={<PaymentFailed />} />
           <Route path="/sessions" element={<Sessions />} />
+          <Route path="/resources" element={<Resources />} />
         </Route>
 
         {/* ================= TOPIC ROUTES ================= */}
@@ -123,6 +131,9 @@ function App() {
         <Route element={<HospitalAdminRoute />}>
           <Route path="/hospital-admin/dashboard" element={<HospitalAdminDashboard />} />
           <Route path="/hospital-admin/counselors" element={<CounselorApproval />} />
+          <Route path="/hospital-admin/schedules" element={<HospitalAdminSchedules />} />
+          <Route path="/hospital-admin/appointments" element={<AppointmentsPreview />} />
+          <Route path="/hospital-admin/patients" element={<HospitalAdminPatients />} />
         </Route>
       </Routes>
     </BrowserRouter>

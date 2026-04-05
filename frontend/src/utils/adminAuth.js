@@ -1,19 +1,38 @@
-export const getAuthToken = () => localStorage.getItem("auth_token");
-
-export const getAuthRole = () => localStorage.getItem("auth_role");
-
-export const getAdminInfo = () => {
+export function getAdminInfo() {
   try {
-    return JSON.parse(localStorage.getItem("admin_info"));
+    return JSON.parse(localStorage.getItem("admin_data")) || {};
   } catch {
-    return null;
+    return {};
   }
-};
+}
 
-export const isLoggedIn = () => !!getAuthToken();
+export function getAdminToken() {
+  return localStorage.getItem("admin_token");
+}
 
-export const logout = () => {
+export function getAdminRole() {
+  return localStorage.getItem("admin_role");
+}
+
+// backward-compatible old name
+export function getAuthRole() {
+  return getAdminRole();
+}
+
+export function isHospitalAdmin() {
+  return getAdminRole() === "hospital_admin";
+}
+
+export function isPlatformAdmin() {
+  return getAdminRole() === "platform_admin";
+}
+
+export function logout() {
+  localStorage.removeItem("admin_token");
+  localStorage.removeItem("admin_role");
+  localStorage.removeItem("admin_data");
+
   localStorage.removeItem("auth_token");
   localStorage.removeItem("auth_role");
   localStorage.removeItem("admin_info");
-};
+}

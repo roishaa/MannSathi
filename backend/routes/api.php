@@ -17,6 +17,11 @@ use App\Http\Controllers\Api\CounselorDashboardController;
 use App\Http\Controllers\Api\GoogleAuthController;
 use App\Http\Controllers\Api\EsewaController;
 use App\Http\Controllers\Api\GuestBookingController;
+use App\Http\Controllers\Api\ChatController;
+use App\Http\Controllers\Api\HospitalAdminAppointmentController;
+use App\Http\Controllers\Api\HospitalAdminPatientController;
+use App\Http\Controllers\Api\AppointmentMessageController;
+use App\Http\Controllers\Api\MentalHealthResourceController;
 
 Route::get('/health', function () {
     return response()->json(['status' => 'ok']);
@@ -133,10 +138,23 @@ Route::get('/guest-counselors/available', [CounselorPublicController::class, 'av
 Route::post('/guest-bookings', [GuestBookingController::class, 'store']);
 Route::get('/guest-session/{id}', [GuestBookingController::class, 'showGuestSession']);
 Route::post('/esewa/guest-pay', [EsewaController::class, 'guestPay']);
+Route::get('/guest-simulate-success/{guest_booking_id}', [EsewaController::class, 'guestSimulateSuccess']);
 
 // ================= ESEWA CALLBACK ROUTES (PUBLIC) =================
 Route::get('/esewa/success', [EsewaController::class, 'success']);
 Route::get('/esewa/failure', [EsewaController::class, 'failure']);
+Route::get('/simulate-success/{transaction_uuid}', [EsewaController::class, 'simulateSuccess']);
+
+// ================= GUEST APPOINTMENT CHAT =================
+Route::get('/guest/appointments/{appointment}/messages', [AppointmentMessageController::class, 'guestMessages']);
+Route::post('/guest/appointments/{appointment}/messages', [AppointmentMessageController::class, 'guestStore']);
+
+Route::get('/hospital-admin/appointments', [HospitalAdminAppointmentController::class, 'index']);
+
+// ================= MENTAL HEALTH RESOURCES =================
+Route::get('/resources', [MentalHealthResourceController::class, 'index']);
+Route::get('/resources/featured', [MentalHealthResourceController::class, 'featured']);
+Route::get('/resources/{id}', [MentalHealthResourceController::class, 'show']);
 
 // ================= PROTECTED ROUTES =================
 Route::middleware('multi.auth')->group(function () {
@@ -158,6 +176,10 @@ Route::middleware('multi.auth')->group(function () {
     Route::get('/counselor/notes', [CounselorDashboardController::class, 'getNotes']);
     Route::post('/counselor/notes', [CounselorDashboardController::class, 'saveNotes']);
     Route::get('/content/shared', [CounselorDashboardController::class, 'sharedContent']);
+
+    // ================= SHARED APPOINTMENT CHAT (USER + COUNSELOR) =================
+    Route::get('/appointments/{appointment}/messages', [ChatController::class, 'index']);
+    Route::post('/appointments/{appointment}/messages', [ChatController::class, 'store']);
 
     // ================= MOOD =================
     Route::post('/user/mood-entries', [MoodController::class, 'store']);

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { API } from "../utils/api";
 
@@ -11,6 +11,14 @@ export default function GuestSession() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
+
+  const [messages, setMessages] = useState([]);
+  const [chatLoading, setChatLoading] = useState(false);
+  const [chatError, setChatError] = useState("");
+  const [newMessage, setNewMessage] = useState("");
+  const [sending, setSending] = useState(false);
+
+  const messagesEndRef = useRef(null);
 
   const sessionLink = useMemo(() => {
     if (!id || !token) return "";
@@ -48,6 +56,45 @@ export default function GuestSession() {
     }
   }, [id, token]);
 
+  const fetchMessages = async () => {
+    if (!id || !token) return;
+
+    try {
+      setChatLoading(true);
+      setChatError("");
+
+      const res = await API.get(
+        `/guest/appointments/${id}/messages?token=${encodeURIComponent(token)}`
+      );
+
+      setMessages(res.data?.messages || []);
+    } catch (err) {
+      console.error("Failed to load chat messages:", err);
+      setChatError(
+        err?.response?.data?.message ||
+          "Could not load chat messages right now."
+      );
+    } finally {
+      setChatLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!id || !token || !booking) return;
+
+    fetchMessages();
+
+    const interval = setInterval(() => {
+      fetchMessages();
+    }, 3000);
+
+    return () => clearInterval(interval);
+  }, [id, token, booking]);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
   const handleCopyLink = async () => {
     if (!sessionLink) return;
 
@@ -68,6 +115,37 @@ export default function GuestSession() {
     alert(
       "AI support will be connected next. For now, please use the calming exercises and grounding tips below while you wait."
     );
+  };
+
+  const handleSendMessage = async () => {
+    if (!newMessage.trim() || !id || !token) return;
+
+    try {
+      setSending(true);
+      setChatError("");
+
+      await API.post(`/guest/appointments/${id}/messages`, {
+        message: newMessage.trim(),
+        token,
+      });
+
+      setNewMessage("");
+      fetchMessages();
+    } catch (err) {
+      console.error("Failed to send message:", err);
+      setChatError(
+        err?.response?.data?.message || "Could not send your message."
+      );
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const handleMessageKeyDown = (e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleSendMessage();
+    }
   };
 
   if (loading) {
@@ -227,8 +305,8 @@ export default function GuestSession() {
                   </div>
                   <p className="mt-2 text-sm text-neutral-600 leading-relaxed">
                     Your counselor will see this booking in their dashboard. When
-                    they join, this page can later be extended into your chat or
-                    video session room.
+                    they join, this page now supports session chat using your
+                    private session link.
                   </p>
                 </div>
 
@@ -241,6 +319,95 @@ export default function GuestSession() {
                 >
                   Waiting for Counselor
                 </button>
+              </div>
+
+              <div className="rounded-2xl border border-[#dce8df] bg-white px-5 py-5">
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <div>
+                    <h2 className="text-lg font-semibold text-neutral-900">
+                      Session Chat
+                    </h2>
+                    <p className="mt-2 text-sm text-neutral-600">
+                      Send messages here when chat becomes available for your
+                      session.
+                    </p>
+                  </div>
+
+                  {chatLoading && (
+                    <span className="text-xs font-medium text-neutral-500">
+                      Refreshing...
+                    </span>
+                  )}
+                </div>
+
+                {chatError && (
+                  <div className="mt-4 rounded-2xl border border-[#f1d3d3] bg-[#fff7f7] px-4 py-3 text-sm text-[#9a3b3b]">
+                    {chatError}
+                  </div>
+                )}
+
+                <div className="mt-4 h-[320px] overflow-y-auto rounded-2xl border border-[#e5ece6] bg-[#fbfdfb] px-4 py-4 space-y-3">
+                  {!chatLoading && messages.length === 0 && !chatError && (
+                    <div className="h-full flex items-center justify-center text-sm text-neutral-500 text-center">
+                      No messages yet. Once chat opens, your conversation will
+                      appear here.
+                    </div>
+                  )}
+
+                  {messages.map((msg) => {
+                    const isGuest = msg.sender_type === "guest";
+
+                    return (
+                      <div
+                        key={msg.id}
+                        className={`flex ${
+                          isGuest ? "justify-end" : "justify-start"
+                        }`}
+                      >
+                        <div
+                          className={`max-w-[80%] rounded-2xl px-4 py-3 text-sm shadow-sm ${
+                            isGuest
+                              ? "bg-[#dff3e4] text-[#1f4d35] border border-[#b9dec3]"
+                              : "bg-white text-neutral-800 border border-[#e5e7eb]"
+                          }`}
+                        >
+                          <div className="text-[11px] font-semibold uppercase tracking-wide mb-1 opacity-70">
+                            {msg.sender_type}
+                          </div>
+                          <div className="whitespace-pre-wrap break-words">
+                            {msg.message}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  <div ref={messagesEndRef} />
+                </div>
+
+                <div className="mt-4 flex gap-3 items-end">
+                  <textarea
+                    value={newMessage}
+                    onChange={(e) => setNewMessage(e.target.value)}
+                    onKeyDown={handleMessageKeyDown}
+                    rows={2}
+                    placeholder="Type your message..."
+                    className="flex-1 resize-none rounded-2xl border border-[#d8e5db] bg-white px-4 py-3 text-sm text-neutral-800 outline-none focus:border-[#89ad8f] focus:ring-2 focus:ring-[#dfeee3]"
+                  />
+
+                  <button
+                    type="button"
+                    onClick={handleSendMessage}
+                    disabled={sending || !newMessage.trim()}
+                    className="inline-flex items-center rounded-full border border-[#89ad8f] bg-[#e3f3e6]
+                               px-5 py-3 text-sm font-semibold text-[#305b39]
+                               shadow-[0_4px_0_0_#89ad8f] hover:translate-y-[1px]
+                               hover:shadow-[0_3px_0_0_#89ad8f] transition
+                               disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {sending ? "Sending..." : "Send"}
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -360,7 +527,10 @@ export default function GuestSession() {
                   <li>• Take a few slow breaths before the session begins.</li>
                   <li>• Keep some water nearby.</li>
                   <li>• Think about one or two things you want to talk about.</li>
-                  <li>• Be gentle with yourself. You do not need to explain everything perfectly.</li>
+                  <li>
+                    • Be gentle with yourself. You do not need to explain
+                    everything perfectly.
+                  </li>
                 </ul>
               </div>
 

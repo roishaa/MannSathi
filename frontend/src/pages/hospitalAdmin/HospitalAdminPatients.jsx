@@ -17,26 +17,26 @@ export default function AdminLogin() {
     setLoading(true);
 
     try {
-      // ✅ Call /admin/login (baseURL already adds /api via proxy)
       const res = await API.post("/admin/login", {
         email: form.email.trim(),
         password: form.password,
       });
 
-      // expected: { token, admin: { role, ... } } OR { token, role, admin }
       const token = res.data?.token || res.data?.access_token;
       const admin = res.data?.admin || null;
       const role = res.data?.role || admin?.role;
 
-      if (!token || !role) throw new Error("Token/role missing from response.");
+      if (!token || !role) {
+        throw new Error("Token/role missing from response.");
+      }
 
       localStorage.setItem("admin_token", token);
-localStorage.setItem("admin_role", role);
-localStorage.setItem("admin_data", JSON.stringify(admin || {}));
+      localStorage.setItem("admin_role", role);
+      localStorage.setItem("admin_data", JSON.stringify(admin || {}));
 
-// cleanup old keys (important)
-localStorage.removeItem("auth_token");
-localStorage.removeItem("auth_role");
+      localStorage.removeItem("auth_token");
+      localStorage.removeItem("auth_role");
+      localStorage.removeItem("admin_info");
 
       if (role === "platform_admin") {
         navigate("/platform-admin/dashboard", { replace: true });
@@ -46,11 +46,12 @@ localStorage.removeItem("auth_role");
         setError("Unknown admin role.");
       }
     } catch (err) {
+      console.error("Admin login failed:", err);
       setError(
         err?.response?.data?.message ||
           (err?.response?.status === 401
             ? "Invalid email or password."
-            : "Login failed.")
+            : err?.message || "Login failed.")
       );
     } finally {
       setLoading(false);
@@ -78,13 +79,6 @@ localStorage.removeItem("auth_role");
             <p className="mt-4 max-w-md text-sm leading-relaxed text-[#5e6662] sm:text-base">
               Manage platform operations, hospitals, and counselor workflows from one secure admin portal built for mental health services.
             </p>
-
-            <div className="mt-8 grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div className="rounded-xl border border-[#e8e3d9] bg-[#fbfaf7] px-4 py-3 text-sm text-[#30403a]">✓ Manage hospitals</div>
-              <div className="rounded-xl border border-[#e8e3d9] bg-[#fbfaf7] px-4 py-3 text-sm text-[#30403a]">✓ Review counselors</div>
-              <div className="rounded-xl border border-[#e8e3d9] bg-[#fbfaf7] px-4 py-3 text-sm text-[#30403a]">✓ Track sessions</div>
-              <div className="rounded-xl border border-[#e8e3d9] bg-[#fbfaf7] px-4 py-3 text-sm text-[#30403a]">✓ Secure admin access</div>
-            </div>
           </div>
         </section>
 
@@ -147,10 +141,6 @@ localStorage.removeItem("auth_role");
             >
               {loading ? "Logging in..." : "Login"}
             </button>
-
-            <p className="mt-5 text-center text-xs text-[#7a827f]">
-              Authorized administrators only
-            </p>
           </form>
         </section>
       </div>

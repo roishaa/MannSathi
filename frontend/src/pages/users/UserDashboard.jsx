@@ -13,7 +13,7 @@ export default function UserDashboard() {
   ========================= */
   const user = useMemo(() => {
     try {
-      return JSON.parse(localStorage.getItem("user")) || {};
+      return JSON.parse(localStorage.getItem("user_data")) || {};
     } catch {
       return {};
     }
@@ -21,6 +21,43 @@ export default function UserDashboard() {
 
   const userName = user?.pseudonym || user?.name || user?.full_name || "LotusMind 🌸";
   const userEmail = user?.email || "user@email.com";
+
+  /* =========================
+      RESOURCES
+  ========================= */
+  const [resources, setResources] = useState([]);
+  const [resourcesLoading, setResourcesLoading] = useState(false);
+
+  const loadResources = async () => {
+    setResourcesLoading(true);
+    try {
+      const res = await api.get("/resources/featured");
+      setResources(res.data?.items || []);
+    } catch (e) {
+      console.log("Resources fetch failed:", e?.response?.status, e?.response?.data || e.message);
+      setResources([]);
+    } finally {
+      setResourcesLoading(false);
+    }
+  };
+
+  const getResourceIcon = (type) => {
+    const t = (type || "").toLowerCase();
+    if (t === "video") return "🎥";
+    if (t === "exercise") return "🧘";
+    if (t === "article") return "📖";
+    if (t === "audio") return "🎧";
+    return "📚";
+  };
+
+  const getResourceIconBg = (type) => {
+    const t = (type || "").toLowerCase();
+    if (t === "video") return "bg-gradient-to-br from-[#fcefdc] to-[#f7e3be]";
+    if (t === "exercise") return "bg-gradient-to-br from-[#e3f3e6] to-[#d5e8e4]";
+    if (t === "article") return "bg-gradient-to-br from-[#ede7fb] to-[#ddd6f9]";
+    if (t === "audio") return "bg-gradient-to-br from-[#ffe5ec] to-[#ffd6e0]";
+    return "bg-gradient-to-br from-[#eef2f7] to-[#dde7f2]";
+  };
 
   /* =========================
       MOOD
@@ -49,17 +86,31 @@ export default function UserDashboard() {
   const todayMood = moodItems?.[0];
 
   /* =========================
-      SESSIONS
+      SESSIONS - SINGLE SOURCE OF TRUTH
   ========================= */
-  const [nextSession, setNextSession] = useState(null);
-  const [sessionLoading, setSessionLoading] = useState(false);
-
   const [sessions, setSessions] = useState([]);
   const [sessionsLoading, setSessionsLoading] = useState(false);
 
   const pollStartedRef = useRef(false);
 
-  const normalizeStatus = (status) => (status || "").toLowerCase().trim();
+  const normalizeStatus = (status) => {
+    const s = (status || "").toLowerCase().trim();
+    if (s === "scheduled") return "confirmed";
+    if (s === "canceled" || s === "declined") return "cancelled";
+    return s || "pending";
+  };
+
+  const pad2 = (value) => String(value).padStart(2, "0");
+
+  const safeDatePartsFromDateTime = (rawDateTime) => {
+    const d = new Date(rawDateTime);
+    if (isNaN(d.getTime())) return { date: null, time: null };
+
+    return {
+      date: `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`,
+      time: `${pad2(d.getHours())}:${pad2(d.getMinutes())}`,
+    };
+  };
 
   const normalizeSession = (item) => {
     if (!item) return null;
@@ -68,23 +119,15 @@ export default function UserDashboard() {
       item.date_time ||
       item.appointment_datetime ||
       item.appointment_date_time ||
+      item.scheduled_at ||
       null;
 
-    const rawDate =
-      item.date ||
-      item.appointment_date ||
-      (rawDateTime ? new Date(rawDateTime).toISOString().split("T")[0] : null);
+    const fromDateTime = rawDateTime
+      ? safeDatePartsFromDateTime(rawDateTime)
+      : { date: null, time: null };
 
-    const rawTime =
-      item.time ||
-      item.appointment_time ||
-      (rawDateTime
-        ? new Date(rawDateTime).toLocaleTimeString("en-US", {
-            hour: "2-digit",
-            minute: "2-digit",
-            hour12: false,
-          })
-        : null);
+    const rawDate = item.date || item.appointment_date || fromDateTime.date || null;
+    const rawTime = item.time || item.appointment_time || fromDateTime.time || null;
 
     return {
       id: item.id,
@@ -97,24 +140,10 @@ export default function UserDashboard() {
       date: rawDate,
       time: rawTime,
       type: item.type || item.session_type || "chat",
-      status: item.status || "pending",
-      payment_status: item.payment_status || "paid",
+      status: normalizeStatus(item.status),
+      payment_status: (item.payment_status || "paid").toLowerCase(),
       meeting_link: item.meeting_link || item.meet_link || null,
     };
-  };
-
-  const loadNextSession = async () => {
-    setSessionLoading(true);
-    try {
-      const res = await api.get("/user/appointments/next");
-      const appointment = res.data?.item || res.data?.data || null;
-      setNextSession(normalizeSession(appointment));
-    } catch (e) {
-      console.log("Next session fetch failed:", e?.response?.status, e?.response?.data || e.message);
-      setNextSession(null);
-    } finally {
-      setSessionLoading(false);
-    }
   };
 
   const loadSessions = async () => {
@@ -127,7 +156,12 @@ export default function UserDashboard() {
         res.data?.data ||
         (Array.isArray(res.data) ? res.data : []);
 
-      setSessions((rawItems || []).map(normalizeSession).filter(Boolean));
+      const normalized = (rawItems || []).map(normalizeSession).filter(Boolean);
+
+      console.log("RAW SESSIONS:", rawItems);
+      console.log("NORMALIZED SESSIONS:", normalized);
+
+      setSessions(normalized);
     } catch (e) {
       console.log("Sessions fetch failed:", e?.response?.status, e?.response?.data || e.message);
       setSessions([]);
@@ -137,9 +171,8 @@ export default function UserDashboard() {
   };
 
   useEffect(() => {
-    loadNextSession();
     loadSessions();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    loadResources();
   }, []);
 
   useEffect(() => {
@@ -147,21 +180,23 @@ export default function UserDashboard() {
     pollStartedRef.current = true;
 
     const t = setInterval(() => {
-      loadNextSession();
       loadSessions();
     }, 10000);
 
     return () => clearInterval(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   /* =========================
-      45-MIN SESSION TIME LOGIC
+      SESSION TIME LOGIC
   ========================= */
   const getSessionStart = (session) => {
     if (!session?.date || !session?.time) return null;
-    const start = new Date(`${session.date}T${session.time}`);
-    return isNaN(start.getTime()) ? null : start;
+
+    const candidate = `${session.date}T${session.time}:00`;
+    const d = new Date(candidate);
+
+    if (isNaN(d.getTime())) return null;
+    return d;
   };
 
   const getSessionEnd = (session) => {
@@ -188,15 +223,36 @@ export default function UserDashboard() {
     return start ? now < start : false;
   };
 
-  const upcoming = sessions.filter((s) => {
+  const sortedSessions = [...sessions].sort((a, b) => {
+    const aStart = getSessionStart(a);
+    const bStart = getSessionStart(b);
+
+    if (!aStart && !bStart) return 0;
+    if (!aStart) return 1;
+    if (!bStart) return -1;
+
+    return aStart.getTime() - bStart.getTime();
+  });
+
+  const upcoming = sortedSessions.filter((s) => {
     const st = normalizeStatus(s.status);
     return (st === "pending" || st === "confirmed") && !isPastByTime(s);
   });
 
-  const liveSession = upcoming.find((s) => isLiveByTime(s));
-  const nextUpcomingSession = upcoming.find((s) => isUpcomingByTime(s));
+  const liveSession = sortedSessions.find(
+    (s) =>
+      normalizeStatus(s.status) === "confirmed" &&
+      s.payment_status === "paid" &&
+      isLiveByTime(s)
+  );
 
-  const displaySession = liveSession || nextSession || nextUpcomingSession || null;
+  const nextUpcomingSession = sortedSessions.find(
+    (s) =>
+      (normalizeStatus(s.status) === "pending" || normalizeStatus(s.status) === "confirmed") &&
+      isUpcomingByTime(s)
+  );
+
+  const displaySession = liveSession || nextUpcomingSession || null;
 
   const displaySessionStatus = normalizeStatus(displaySession?.status);
   const hasCounselorAssigned = Boolean(displaySession?.counselor_id);
@@ -228,8 +284,8 @@ export default function UserDashboard() {
       LOGOUT
   ========================= */
   const handleLogout = () => {
-    localStorage.removeItem("auth_token");
-    localStorage.removeItem("user");
+    localStorage.removeItem("user_token");
+    localStorage.removeItem("user_data");
     navigate("/");
   };
 
@@ -240,6 +296,7 @@ export default function UserDashboard() {
     { label: "Dashboard", to: "/users/dashboard", icon: "🏠" },
     { label: "Search Counselor", to: "/search-doctor", icon: "🧑‍⚕️" },
     { label: "Sessions", to: "/sessions", icon: "📅" },
+    { label: "Resources", to: "/resources", icon: "📚" },
     { label: "Payments", to: "/payments", icon: "💳" },
     { label: "Settings", to: "/settings", icon: "⚙️" },
   ];
@@ -258,23 +315,16 @@ export default function UserDashboard() {
     return `${base} bg-[#f9fafb] border-[#e5e7eb] text-[#374151]`;
   };
 
-  const displayStatusLabel = (status) => {
-    const s = normalizeStatus(status);
-    if (s === "scheduled") return "confirmed";
-    if (s === "declined" || s === "canceled") return "cancelled";
-    return s || "pending";
-  };
-
   const quickActions = [
     { title: "Book session", desc: "Find a counselor", to: "/users/appointments/book", icon: "📌" },
-    { title: "My sessions", desc: "Upcoming & history", to: "/sessions", icon: "🗓️" },
+    { title: "Resources", desc: "Videos & self-help", to: "/resources", icon: "📚" },
     { title: "Mood check-in", desc: "Track emotions", to: "/users/mood-check", icon: "🙂" },
   ];
 
   const chatAction = {
     title: "Chat",
     desc: chatUnlocked ? "Message your counselor" : "Available only during session time",
-    to: chatUnlocked ? `/chat/${displaySession?.id}` : "#",
+    to: chatUnlocked ? `/users/chat/${displaySession?.id}` : "#",
     icon: "💬",
     locked: !chatUnlocked,
   };
@@ -497,7 +547,7 @@ export default function UserDashboard() {
             </div>
 
             <div className="px-5 md:px-8 py-7 md:py-8">
-              {sessionLoading && sessionsLoading ? (
+              {sessionsLoading ? (
                 <div className="space-y-4">
                   <div className="h-6 bg-[#e9ece6] rounded-xl w-48 animate-pulse"></div>
                   <div className="h-4 bg-[#e9ece6] rounded-xl w-32 animate-pulse"></div>
@@ -613,7 +663,7 @@ export default function UserDashboard() {
                     {chatUnlocked ? (
                       <>
                         <Link
-                          to={`/chat/${displaySession?.id}`}
+                          to={`/users/chat/${displaySession?.id}`}
                           className="px-6 py-3 bg-gradient-to-r from-[#1f4e43] to-[#2a6b5e] text-white rounded-2xl font-semibold hover:shadow-lg hover:-translate-y-0.5 transition flex items-center justify-center gap-2 shadow-md"
                         >
                           💬 Start chat
@@ -687,60 +737,88 @@ export default function UserDashboard() {
           <div className="rounded-2xl border border-[#e7e5de] bg-white p-5 md:p-6 shadow-sm">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <h3 className="text-lg font-bold text-[#1f4e43]">My Sessions</h3>
-                <p className="text-sm text-[#6a7772]">All booked and completed appointments</p>
+                <h3 className="text-lg font-bold text-[#1f4e43]">Resources</h3>
+                <p className="text-sm text-[#6a7772]">Mental health practices, videos, and self-help support</p>
               </div>
               <Link
-                to="/sessions"
+                to="/resources"
                 className="px-3.5 py-2 rounded-xl border border-[#d7d9d0] text-xs font-semibold text-[#1f4e43] hover:bg-[#f7f8f5] transition"
               >
                 View all
               </Link>
             </div>
 
-            <div className="mt-4 space-y-3">
-              {sessionsLoading ? (
-                <div className="text-sm text-[#6b7772]">Loading sessions...</div>
-              ) : sessions.length === 0 ? (
-                <div className="text-sm text-[#6b7772]">No sessions booked yet.</div>
-              ) : (
-                sessions.map((s) => (
+            <div className="mt-4 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+              {resourcesLoading ? (
+                <>
+                  {[1, 2, 3].map((item) => (
+                    <div
+                      key={item}
+                      className="rounded-2xl border border-[#e8e6df] bg-[#fbfbf9] p-5 shadow-sm animate-pulse"
+                    >
+                      <div className="w-12 h-12 rounded-2xl bg-[#e8ece7]" />
+                      <div className="mt-4 h-4 w-40 rounded bg-[#e8ece7]" />
+                      <div className="mt-3 h-3 w-full rounded bg-[#e8ece7]" />
+                      <div className="mt-2 h-3 w-3/4 rounded bg-[#e8ece7]" />
+                    </div>
+                  ))}
+                </>
+              ) : resources.length > 0 ? (
+                resources.slice(0, 3).map((resource) => (
                   <div
-                    key={s.id}
-                    className="rounded-xl border border-[#e8e6df] bg-[#fbfbf9] p-4 shadow-sm"
+                    key={resource.id}
+                    className="rounded-2xl border border-[#e8e6df] bg-[#fbfbf9] p-5 shadow-sm hover:shadow-md transition"
                   >
-                    <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="text-xs uppercase tracking-wider text-[#8a948f] font-semibold">User Name</p>
-                        <p className="text-sm font-semibold text-[#1f2f2a] truncate">{userName}</p>
-                      </div>
-                      <span className={badgeClass(displayStatusLabel(s.status))}>{displayStatusLabel(s.status)}</span>
+                    <div
+                      className={`w-12 h-12 rounded-2xl ${getResourceIconBg(resource.type)} flex items-center justify-center text-2xl`}
+                    >
+                      {getResourceIcon(resource.type)}
                     </div>
 
-                    <div className="mt-3 grid grid-cols-2 md:grid-cols-5 gap-3 text-sm">
-                      <div>
-                        <p className="text-[11px] uppercase tracking-wider text-[#8a948f] font-semibold">Counselor</p>
-                        <p className="mt-1 text-[#1f4e43] font-medium truncate">{s.counselor_name || "Counselor not assigned"}</p>
-                      </div>
-                      <div>
-                        <p className="text-[11px] uppercase tracking-wider text-[#8a948f] font-semibold">Date</p>
-                        <p className="mt-1 text-[#1f4e43] font-medium">{s.date || "Not set"}</p>
-                      </div>
-                      <div>
-                        <p className="text-[11px] uppercase tracking-wider text-[#8a948f] font-semibold">Time</p>
-                        <p className="mt-1 text-[#1f4e43] font-medium">{s.time || "Not set"}</p>
-                      </div>
-                      <div>
-                        <p className="text-[11px] uppercase tracking-wider text-[#8a948f] font-semibold">Type</p>
-                        <p className="mt-1 text-[#1f4e43] font-medium capitalize">{s.type === "video" ? "Video" : "Chat"}</p>
-                      </div>
-                      <div>
-                        <p className="text-[11px] uppercase tracking-wider text-[#8a948f] font-semibold">Status</p>
-                        <p className="mt-1 text-[#1f4e43] font-medium capitalize">{displayStatusLabel(s.status)}</p>
-                      </div>
+                    <div className="mt-4 flex items-center justify-between gap-3">
+                      <h4 className="text-base font-bold text-[#1f4e43] leading-snug">
+                        {resource.title}
+                      </h4>
+                      <span className="shrink-0 rounded-full border border-[#d8ddd7] bg-white px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-[#60706a]">
+                        {resource.type || "resource"}
+                      </span>
+                    </div>
+
+                    <p className="mt-2 text-sm text-[#66706b] leading-relaxed">
+                      {resource.description || "Helpful self-support resource for mental wellness."}
+                    </p>
+
+                    <div className="mt-3 flex items-center gap-2 flex-wrap">
+                      {resource.category && (
+                        <span className="rounded-full bg-[#eef7f3] px-2.5 py-1 text-[11px] font-medium text-[#27584d]">
+                          {resource.category}
+                        </span>
+                      )}
+                      {resource.duration && (
+                        <span className="rounded-full bg-[#f6f7f3] px-2.5 py-1 text-[11px] font-medium text-[#6a7772]">
+                          {resource.duration}
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="mt-4">
+                      <Link
+                        to="/resources"
+                        className="inline-flex text-xs font-semibold text-[#1f4e43] hover:underline"
+                      >
+                        Explore resource →
+                      </Link>
                     </div>
                   </div>
                 ))
+              ) : (
+                <div className="md:col-span-2 xl:col-span-3 rounded-2xl border border-dashed border-[#d6dbd2] bg-[#fbfcfa] px-6 py-10 text-center">
+                  <div className="text-4xl mb-3">📚</div>
+                  <h4 className="text-lg font-bold text-[#1f4e43]">No resources available yet</h4>
+                  <p className="mt-2 text-sm text-[#66706b]">
+                    Add some mental health resources in the database and they will appear here.
+                  </p>
+                </div>
               )}
             </div>
           </div>

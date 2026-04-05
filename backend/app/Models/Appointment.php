@@ -39,4 +39,9 @@ class Appointment extends Model
     {
         return $this->belongsTo(Counselor::class);
     }
+
+    public function messages()
+    {
+        return $this->hasMany(Message::class);
+    }
 }

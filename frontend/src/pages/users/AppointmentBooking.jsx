@@ -20,6 +20,9 @@ export default function BookAppointment() {
   const [paymentMethod, setPaymentMethod] = useState("esewa");
   const [paying, setPaying] = useState(false);
 
+  const [paymentData, setPaymentData] = useState(null);
+  const [transactionUuid, setTransactionUuid] = useState("");
+
   const [formData, setFormData] = useState({
     counselor_id: "",
     counselorName: "",
@@ -37,7 +40,7 @@ export default function BookAppointment() {
   const [selectedTime, setSelectedTime] = useState("");
 
   useEffect(() => {
-    const token = localStorage.getItem("auth_token");
+    const token = localStorage.getItem("user_token");
     if (!token) {
       nav("/login", { replace: true });
     }
@@ -50,13 +53,13 @@ export default function BookAppointment() {
 
       try {
         const res = await api.get("/counselors");
-        setCounselors(res.data?.items || []);
+        setCounselors(res.data?.items || res.data?.data || res.data || []);
       } catch (e) {
         console.error("Failed to load counselors", e);
 
         if (e?.response?.status === 401) {
-          localStorage.removeItem("auth_token");
-          localStorage.removeItem("user");
+          localStorage.removeItem("user_token");
+          localStorage.removeItem("user_data");
           nav("/login", { replace: true });
         } else {
           setError("Failed to load counselors. Please try again later.");
@@ -121,7 +124,7 @@ export default function BookAppointment() {
     const dd = String(localDate.getDate()).padStart(2, "0");
 
     return `${yyyy}-${mm}-${dd}`;
-  }, [formData.month, formData.year, formData.date, months]);
+  }, [formData.month, formData.year, formData.date]);
 
   const timeSlots = [
     { label: "9:30 AM", subLabel: "Morning", value: "09:30", icon: "🌅" },
@@ -151,7 +154,7 @@ export default function BookAppointment() {
           },
         });
 
-        setBookedSlots(res.data?.items || []);
+        setBookedSlots(res.data?.items || res.data?.data || res.data || []);
       } catch (e) {
         console.error("Failed to fetch booked slots", e);
         setBookedSlots([]);
@@ -209,6 +212,28 @@ export default function BookAppointment() {
     return true;
   }, [step, formData, bookedSlots]);
 
+  const submitEsewaForm = (data) => {
+    if (!data?.payment_url || !data?.form_fields) {
+      setError("Missing eSewa payment data.");
+      return;
+    }
+
+    const form = document.createElement("form");
+    form.method = "POST";
+    form.action = data.payment_url;
+
+    Object.entries(data.form_fields).forEach(([key, value]) => {
+      const input = document.createElement("input");
+      input.type = "hidden";
+      input.name = key;
+      input.value = value;
+      form.appendChild(input);
+    });
+
+    document.body.appendChild(form);
+    form.submit();
+  };
+
   const handleEsewaPayment = async () => {
     if (paymentMethod !== "esewa") {
       setError("For now, only eSewa payment is enabled.");
@@ -219,6 +244,8 @@ export default function BookAppointment() {
       setPaying(true);
       setError("");
       setSuccessMessage("");
+      setPaymentData(null);
+      setTransactionUuid("");
 
       const payload = {
         counselor_id: formData.counselor_id,
@@ -240,28 +267,19 @@ export default function BookAppointment() {
         throw new Error("Invalid eSewa payment response.");
       }
 
-      const form = document.createElement("form");
-      form.method = "POST";
-      form.action = payment_url;
-
-      Object.entries(form_fields).forEach(([key, value]) => {
-        const input = document.createElement("input");
-        input.type = "hidden";
-        input.name = key;
-        input.value = value;
-        form.appendChild(input);
-      });
-
-      document.body.appendChild(form);
-      form.submit();
+      setPaymentData(res.data);
+      setTransactionUuid(form_fields.transaction_uuid);
+      setSuccessMessage(
+        "Payment initialized. You can continue to eSewa or simulate success for demo."
+      );
     } catch (e) {
       console.error("Payment initiation failed", e);
 
       if (e?.response?.status === 422) {
         setError(e?.response?.data?.message || "This slot is already booked.");
       } else if (e?.response?.status === 401) {
-        localStorage.removeItem("auth_token");
-        localStorage.removeItem("user");
+        localStorage.removeItem("user_token");
+        localStorage.removeItem("user_data");
         nav("/login", { replace: true });
       } else {
         setError(e?.response?.data?.message || "Failed to initialize eSewa payment.");
@@ -269,6 +287,15 @@ export default function BookAppointment() {
     } finally {
       setPaying(false);
     }
+  };
+
+  const handleSimulateSuccess = () => {
+    if (!transactionUuid) {
+      setError("No transaction found. Please initialize payment first.");
+      return;
+    }
+
+    window.location.href = `http://127.0.0.1:8000/api/simulate-success/${transactionUuid}`;
   };
 
   useEffect(() => {
@@ -367,12 +394,11 @@ export default function BookAppointment() {
             {stepTitles.map((s) => (
               <div key={s.num} className="flex flex-col items-center">
                 <div
-                  className={`w-10 h-10 rounded-full flex items-center justify-center font-semibold transition-all
-                    ${
-                      step >= s.num
-                        ? "bg-white text-[#215c4c] shadow-lg scale-110"
-                        : "bg-white/20 text-white/60"
-                    }`}
+                  className={`w-10 h-10 rounded-full flex items-center justify-center font-semibold transition-all ${
+                    step >= s.num
+                      ? "bg-white text-[#215c4c] shadow-lg scale-110"
+                      : "bg-white/20 text-white/60"
+                  }`}
                 >
                   {step > s.num ? "✓" : s.num}
                 </div>
@@ -415,12 +441,11 @@ export default function BookAppointment() {
                     <button
                       key={c.id}
                       onClick={() => handlePickCounselor(c)}
-                      className={`text-left p-6 rounded-2xl border-2 transition-all hover:shadow-lg hover:-translate-y-1
-                        ${
-                          formData.counselor_id === c.id
-                            ? "border-[#215c4c] bg-[#f2fbf5] shadow-md"
-                            : "border-[#e5e7eb] hover:border-[#a8d4c3]"
-                        }`}
+                      className={`text-left p-6 rounded-2xl border-2 transition-all hover:shadow-lg hover:-translate-y-1 ${
+                        formData.counselor_id === c.id
+                          ? "border-[#215c4c] bg-[#f2fbf5] shadow-md"
+                          : "border-[#e5e7eb] hover:border-[#a8d4c3]"
+                      }`}
                       type="button"
                     >
                       <div className="flex items-start gap-4">
@@ -498,12 +523,11 @@ export default function BookAppointment() {
                       <button
                         key={`${dateObj.dayName}-${dateObj.day}`}
                         onClick={() => handleDayClick(dateObj)}
-                        className={`p-3 rounded-xl border-2 transition-all hover:shadow-md
-                          ${
-                            isSelected
-                              ? "border-[#215c4c] bg-[#215c4c] text-white shadow-lg scale-105"
-                              : "border-[#e5e7eb] hover:border-[#a8d4c3]"
-                          }`}
+                        className={`p-3 rounded-xl border-2 transition-all hover:shadow-md ${
+                          isSelected
+                            ? "border-[#215c4c] bg-[#215c4c] text-white shadow-lg scale-105"
+                            : "border-[#e5e7eb] hover:border-[#a8d4c3]"
+                        }`}
                         type="button"
                       >
                         <div className="text-xs font-medium mb-1">{dateObj.dayName}</div>
@@ -531,14 +555,13 @@ export default function BookAppointment() {
                         key={slot.value}
                         onClick={() => !isBooked && handleTimeClick(slot)}
                         disabled={isBooked}
-                        className={`p-4 rounded-xl border-2 transition-all text-left
-                          ${
-                            isBooked
-                              ? "border-red-300 bg-red-50 text-red-400 cursor-not-allowed opacity-80"
-                              : isSelected
-                              ? "border-[#215c4c] bg-[#f2fbf5] shadow-md"
-                              : "border-[#e5e7eb] hover:border-[#a8d4c3] hover:shadow-md"
-                          }`}
+                        className={`p-4 rounded-xl border-2 transition-all text-left ${
+                          isBooked
+                            ? "border-red-300 bg-red-50 text-red-400 cursor-not-allowed opacity-80"
+                            : isSelected
+                            ? "border-[#215c4c] bg-[#f2fbf5] shadow-md"
+                            : "border-[#e5e7eb] hover:border-[#a8d4c3] hover:shadow-md"
+                        }`}
                         type="button"
                       >
                         <div className="flex items-center gap-2 mb-1">
@@ -707,12 +730,11 @@ export default function BookAppointment() {
             <button
               onClick={handleNext}
               disabled={!canContinue || loading}
-              className={`px-8 py-3 rounded-full font-semibold transition-all shadow-md hover:shadow-lg
-                ${
-                  !canContinue || loading
-                    ? "bg-gray-300 text-gray-500 cursor-not-allowed"
-                    : "bg-gradient-to-r from-[#215c4c] to-[#2a7a66] text-white hover:scale-105"
-                }`}
+              className={`px-8 py-3 rounded-full font-semibold transition-all shadow-md hover:shadow-lg ${
+                !canContinue || loading
+                  ? "bg-gray-300 text-gray-500 cursor-not-allowed"
+                  : "bg-gradient-to-r from-[#215c4c] to-[#2a7a66] text-white hover:scale-105"
+              }`}
               type="button"
             >
               {loading ? (
@@ -736,9 +758,7 @@ export default function BookAppointment() {
           onClick={() => !paying && setPaymentOpen(false)}
         >
           <div
-            className="w-full max-w-md bg-white rounded-3xl shadow-2xl overflow-hidden
-                       animate-in slide-in-from-bottom-5 md:slide-in-from-center
-                       max-h-[90vh] flex flex-col"
+            className="w-full max-w-md bg-white rounded-3xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="relative bg-gradient-to-r from-[#215c4c] to-[#2a7a66] text-white px-6 py-6">
@@ -797,16 +817,14 @@ export default function BookAppointment() {
                   <button
                     type="button"
                     onClick={() => setPaymentMethod("esewa")}
-                    className={`w-full p-4 rounded-xl border-2 transition-all flex items-center gap-3
-                      ${
-                        paymentMethod === "esewa"
-                          ? "border-[#215c4c] bg-[#f2fbf5] shadow-md"
-                          : "border-[#e5e7eb] hover:border-[#a8d4c3]"
-                      }`}
+                    className={`w-full p-4 rounded-xl border-2 transition-all flex items-center gap-3 ${
+                      paymentMethod === "esewa"
+                        ? "border-[#215c4c] bg-[#f2fbf5] shadow-md"
+                        : "border-[#e5e7eb] hover:border-[#a8d4c3]"
+                    }`}
                   >
                     <div
-                      className={`w-6 h-6 rounded-full border-2 flex items-center justify-center flex-shrink-0
-                      ${
+                      className={`w-6 h-6 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${
                         paymentMethod === "esewa"
                           ? "border-[#215c4c] bg-[#215c4c]"
                           : "border-[#d1d5db]"
@@ -849,42 +867,75 @@ export default function BookAppointment() {
 
               <div className="bg-blue-50 border border-blue-200 rounded-xl p-3">
                 <p className="text-xs text-blue-800">
-                  <strong>🧪 Sandbox Mode:</strong> You will be redirected to eSewa's test payment
-                  page. The appointment slot will only be booked after successful payment callback.
+                  <strong>🧪 Sandbox Mode:</strong> First initialize payment. Then either continue to
+                  eSewa or use simulated success for demo if sandbox is unavailable.
                 </p>
               </div>
             </div>
 
-            <div className="px-6 py-4 bg-gray-50 border-t border-[#e5e7eb] flex gap-3">
-              <button
-                type="button"
-                onClick={() => setPaymentOpen(false)}
-                disabled={paying}
-                className="flex-1 px-4 py-3 rounded-full border-2 border-[#e5e7eb] text-[#374151] font-semibold hover:border-[#215c4c] hover:text-[#215c4c] transition disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Back
-              </button>
+            <div className="px-6 py-4 bg-gray-50 border-t border-[#e5e7eb] flex flex-col gap-3">
+              {!paymentData ? (
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setPaymentOpen(false)}
+                    disabled={paying}
+                    className="flex-1 px-4 py-3 rounded-full border-2 border-[#e5e7eb] text-[#374151] font-semibold hover:border-[#215c4c] hover:text-[#215c4c] transition disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Back
+                  </button>
 
-              <button
-                type="button"
-                onClick={handleEsewaPayment}
-                disabled={paying}
-                className={`flex-1 px-4 py-3 rounded-full font-semibold transition-all flex items-center justify-center gap-2
-                  ${
-                    paying
-                      ? "bg-gray-300 text-gray-500 cursor-not-allowed"
-                      : "bg-gradient-to-r from-[#215c4c] to-[#2a7a66] text-white hover:shadow-lg hover:scale-105"
-                  }`}
-              >
-                {paying ? (
-                  <>
-                    <span className="inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    Redirecting...
-                  </>
-                ) : (
-                  <>💳 Pay with eSewa</>
-                )}
-              </button>
+                  <button
+                    type="button"
+                    onClick={handleEsewaPayment}
+                    disabled={paying}
+                    className={`flex-1 px-4 py-3 rounded-full font-semibold transition-all flex items-center justify-center gap-2 ${
+                      paying
+                        ? "bg-gray-300 text-gray-500 cursor-not-allowed"
+                        : "bg-gradient-to-r from-[#215c4c] to-[#2a7a66] text-white hover:shadow-lg hover:scale-105"
+                    }`}
+                  >
+                    {paying ? (
+                      <>
+                        <span className="inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        Initializing...
+                      </>
+                    ) : (
+                      <>💳 Initialize eSewa Payment</>
+                    )}
+                  </button>
+                </div>
+              ) : (
+                <div className="flex flex-col gap-3">
+                  <button
+                    type="button"
+                    onClick={() => submitEsewaForm(paymentData)}
+                    className="w-full px-4 py-3 rounded-full bg-gradient-to-r from-[#215c4c] to-[#2a7a66] text-white font-semibold hover:shadow-lg"
+                  >
+                    Continue to eSewa
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleSimulateSuccess}
+                    className="w-full px-4 py-3 rounded-full bg-blue-600 text-white font-semibold hover:bg-blue-700"
+                  >
+                    Simulate Success
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPaymentData(null);
+                      setTransactionUuid("");
+                      setSuccessMessage("");
+                    }}
+                    className="w-full px-4 py-3 rounded-full border-2 border-[#e5e7eb] text-[#374151] font-semibold"
+                  >
+                    Reset Payment
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>

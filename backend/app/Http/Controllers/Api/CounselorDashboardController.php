@@ -15,9 +15,11 @@ class CounselorDashboardController extends Controller
     private function requireCounselor(Request $request)
     {
         $user = $request->user();
+
         if (!($user instanceof Counselor)) {
             return [null, response()->json(['message' => 'Unauthorized'], 403)];
         }
+
         return [$user, null];
     }
 
@@ -25,6 +27,7 @@ class CounselorDashboardController extends Controller
     {
         [$counselor, $resp] = $this->requireCounselor($request);
         if ($resp) return $resp;
+
         return response()->json($counselor);
     }
 
@@ -35,31 +38,57 @@ class CounselorDashboardController extends Controller
 
         $appointments = Appointment::with('user')
             ->where('counselor_id', $counselor->id)
-            ->orderBy('date_time')
+            ->orderBy('date_time', 'asc')
             ->get();
 
-        $today = now()->toDateString();
+        $now = now();
 
-        $data = $appointments->map(function ($a) use ($today) {
+        $data = $appointments->map(function ($a) use ($now) {
             $dt = $a->date_time ? Carbon::parse($a->date_time) : null;
-            $dateLabel = $dt ? ($dt->toDateString() === $today ? 'Today' : $dt->format('M d, Y')) : '';
-            $timeLabel = $dt ? $dt->format('h:i A') : '';
+
+            $patientName =
+                $a->user?->name
+                ?? $a->name
+                ?? $a->guest_name
+                ?? 'Unknown patient';
+
+            $rawStatus = strtolower(trim((string) ($a->status ?? 'pending')));
+            $status = $a->status ?? 'pending';
+
+            if (
+                $dt &&
+                $dt->lt($now) &&
+                !in_array($rawStatus, ['completed', 'cancelled', 'canceled', 'declined'])
+            ) {
+                $status = 'completed';
+            }
 
             return [
                 'id' => $a->id,
-                'patient_name' => $a->user?->name,
-                'patient' => $a->user?->name,
-                'time' => $timeLabel,
-                'date' => $dateLabel,
-                'type' => $a->type ? ucfirst($a->type) : '',
-                'status' => $a->status ? ucfirst($a->status) : '',
-                'topic' => '',
-                'notes' => $a->notes,
-                'feedback' => $a->feedback,
-                'summary' => $a->summary,
-                'rating' => null,
-                'quiz_shared' => false,
-                'quiz' => null,
+                'patient_name' => $patientName,
+                'patient' => $patientName,
+
+                'date_time' => $dt ? $dt->format('Y-m-d H:i:s') : null,
+                'date' => $dt ? $dt->format('Y-m-d') : null,
+                'time' => $dt ? $dt->format('H:i') : null,
+
+                'raw_date' => $dt ? $dt->format('Y-m-d') : null,
+                'raw_time' => $dt ? $dt->format('H:i:s') : null,
+
+                'type' => $a->type ?? 'chat',
+                'status' => $status,
+
+                'topic' => $a->topic ?? '',
+                'notes' => $a->notes ?? '',
+                'feedback' => $a->feedback ?? '',
+                'summary' => $a->summary ?? '',
+                'rating' => $a->rating ?? null,
+                'quiz_shared' => $a->quiz_shared ?? false,
+                'quiz' => $a->quiz ?? null,
+
+                'payment_status' => $a->payment_status ?? 'paid',
+                'payment_method' => $a->payment_method ?? null,
+                'amount' => $a->amount ?? null,
             ];
         });
 
