@@ -22,6 +22,9 @@ use App\Http\Controllers\Api\HospitalAdminAppointmentController;
 use App\Http\Controllers\Api\HospitalAdminPatientController;
 use App\Http\Controllers\Api\AppointmentMessageController;
 use App\Http\Controllers\Api\MentalHealthResourceController;
+use App\Http\Controllers\Api\HospitalPaymentController;
+use App\Http\Controllers\CounselorNotesController;
+use App\Http\Controllers\VideoRoomController;
 
 Route::get('/health', function () {
     return response()->json(['status' => 'ok']);
@@ -176,6 +179,7 @@ Route::middleware('multi.auth')->group(function () {
     Route::get('/counselor/notes', [CounselorDashboardController::class, 'getNotes']);
     Route::post('/counselor/notes', [CounselorDashboardController::class, 'saveNotes']);
     Route::get('/content/shared', [CounselorDashboardController::class, 'sharedContent']);
+    
 
     // ================= SHARED APPOINTMENT CHAT (USER + COUNSELOR) =================
     Route::get('/appointments/{appointment}/messages', [ChatController::class, 'index']);
@@ -210,4 +214,19 @@ Route::middleware('multi.auth')->group(function () {
     Route::get('/hospital-admin/counselors', [HospitalCounselorController::class, 'index']);
     Route::put('/hospital-admin/counselors/{id}/approve', [HospitalCounselorController::class, 'approve']);
     Route::put('/hospital-admin/counselors/{id}/reject', [HospitalCounselorController::class, 'reject']);
+    Route::delete('/hospital-admin/counselors/{id}', [HospitalCounselorController::class, 'destroy']);
+    Route::get('/hospital-admin/payments', [HospitalPaymentController::class, 'index']);
+
+     // ── Session Notes ──
+    Route::post('/counselor-notes/{appointmentId}', [CounselorNotesController::class, 'store']);
+    Route::get('/counselor-notes/{appointmentId}', [CounselorNotesController::class, 'show']);
+
+    // ── Session History ──
+    Route::get('/session-history/counselor', [CounselorNotesController::class, 'counselorHistory']);
+    Route::get('/session-history/user', [CounselorNotesController::class, 'userHistory']);
+    Route::get('/session-history/admin', [CounselorNotesController::class, 'adminHistory']);
+
+    // Video room routes
+Route::post('/appointments/{id}/create-video-room', [VideoRoomController::class, 'createRoom']);
+Route::get('/appointments/{id}/video-room', [VideoRoomController::class, 'getRoom']);
 });

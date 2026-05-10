@@ -444,7 +444,7 @@ function Home() {
             </div>
             <div className="flex gap-3 flex-wrap">
               <Link
-                to="/BookAppointment"
+                to="/book-appointment"
                 className="inline-flex items-center rounded-full bg-[#215c4c] text-white
                            px-7 py-2.5 text-sm font-semibold shadow-sm hover:shadow-md transition duration-200"
               >

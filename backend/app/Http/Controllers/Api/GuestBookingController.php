@@ -94,6 +94,7 @@ class GuestBookingController extends Controller
         return response()->json([
             'booking' => [
                 'id' => $booking->id,
+                'appointment_id' => $booking->appointment_id,
                 'guest_name' => $booking->guest_name,
                 'guest_email' => $booking->guest_email,
                 'guest_phone' => $booking->guest_phone,

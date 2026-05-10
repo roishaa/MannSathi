@@ -2,15 +2,47 @@ import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import api from "../../utils/api";
 
+// ─── Validation ───────────────────────────────────────────────────────────────
+const isValidCounselorEmail = (email) =>
+  /^[a-zA-Z0-9._%+\-]+@mannsathi\.com$/.test(email.trim().toLowerCase());
+
+const validateLoginForm = ({ email, password }) => {
+  if (!email.trim()) return "Email address is required.";
+  if (!isValidCounselorEmail(email))
+    return "Only @mannsathi.com email addresses are allowed for counselor login.";
+  if (!password) return "Password is required.";
+  if (password.length < 6) return "Password must be at least 6 characters.";
+  return null;
+};
+
 export default function CounselorLogin() {
   const navigate = useNavigate();
   const [form, setForm] = useState({ email: "", password: "" });
   const [error, setError] = useState("");
+  const [fieldErrors, setFieldErrors] = useState({});
   const [loading, setLoading] = useState(false);
 
   const handleChange = (e) => {
-    setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
+    const { name, value } = e.target;
+    setForm((prev) => ({ ...prev, [name]: value }));
+    if (fieldErrors[name]) setFieldErrors((prev) => ({ ...prev, [name]: "" }));
     if (error) setError("");
+  };
+
+  const handleBlur = (e) => {
+    const { name, value } = e.target;
+    if (name === "email" && value && !isValidCounselorEmail(value)) {
+      setFieldErrors((p) => ({
+        ...p,
+        email: "Only @mannsathi.com email addresses are allowed.",
+      }));
+    }
+    if (name === "password" && value && value.length < 6) {
+      setFieldErrors((p) => ({
+        ...p,
+        password: "Password must be at least 6 characters.",
+      }));
+    }
   };
 
   const saveCounselorAuth = (data) => {
@@ -19,7 +51,6 @@ export default function CounselorLogin() {
       "counselor_data",
       JSON.stringify({ ...data.counselor, role: data.role || "counselor" })
     );
-
     localStorage.removeItem("auth_token");
     localStorage.removeItem("user");
     localStorage.removeItem("counselor");
@@ -28,10 +59,26 @@ export default function CounselorLogin() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
-    setLoading(true);
+    setFieldErrors({});
 
+    // ── Validate BEFORE calling the API ──────────────────────────────────────
+    const validationError = validateLoginForm(form);
+    if (validationError) {
+      setError(validationError);
+      // Also highlight the relevant field
+      if (validationError.toLowerCase().includes("email"))
+        setFieldErrors({ email: validationError });
+      else if (validationError.toLowerCase().includes("password"))
+        setFieldErrors({ password: validationError });
+      return; // ← API never called with bad data
+    }
+
+    setLoading(true);
     try {
-      const { data } = await api.post("/counselor/login", form);
+      const { data } = await api.post("/counselor/login", {
+        email: form.email.trim().toLowerCase(),
+        password: form.password,
+      });
 
       if (!data?.counselor || !data?.token) {
         throw new Error("Invalid response from server.");
@@ -41,11 +88,18 @@ export default function CounselorLogin() {
       navigate("/counselor/dashboard");
     } catch (err) {
       console.error("Counselor login error:", err);
-      setError(err.response?.data?.message || err.message || "Something went wrong.");
+      setError(
+        err.response?.data?.message || err.message || "Something went wrong."
+      );
     } finally {
       setLoading(false);
     }
   };
+
+  const fieldBorder = (name) =>
+    fieldErrors[name]
+      ? "border-red-400 focus:border-red-400 focus:ring-red-100"
+      : "border-[#e3ded0] focus:border-[#89ad8f] focus:ring-[#c9e2cf]";
 
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top,_#f7fbf8_0%,_#f4f7f2_45%,_#f6f1e7_100%)] px-4 sm:px-6 pt-28 pb-12">
@@ -64,7 +118,6 @@ export default function CounselorLogin() {
             <Link to="/" className="hover:text-[#215c4c] transition">Home</Link>
             <Link to="/about" className="hover:text-[#215c4c] transition">About Us</Link>
             <Link to="/services" className="hover:text-[#215c4c] transition">Services</Link>
-
             <Link
               to="/counselor/signup"
               className="inline-flex items-center rounded-full border border-[#89ad8f] bg-[#e3f3e6] px-7 py-2.5 text-[15px] font-semibold text-[#305b39] shadow-[0_4px_0_0_#89ad8f] hover:translate-y-[1px] hover:shadow-[0_3px_0_0_#89ad8f] transition"
@@ -84,44 +137,73 @@ export default function CounselorLogin() {
           <div className="relative w-full max-w-md sm:max-w-lg">
             <div className="rounded-3xl border border-[#ebe4d7] bg-white/90 p-8 sm:p-10 shadow-[0_24px_70px_rgba(32,66,55,0.12)] backdrop-blur">
               <div className="space-y-3">
-                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[#6f877f]">MannSathi Counselor Portal</p>
-                <h1 className="text-3xl font-semibold text-[#1f2f2a] leading-tight">Counselor Login</h1>
+                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[#6f877f]">
+                  MannSathi Counselor Portal
+                </p>
+                <h1 className="text-3xl font-semibold text-[#1f2f2a] leading-tight">
+                  Counselor Login
+                </h1>
                 <p className="text-sm text-neutral-600">
                   Log in to manage your sessions and connect with clients.
                 </p>
+
+                {/* Domain hint badge */}
+                <div className="inline-flex items-center gap-2 rounded-full border border-[#c9e2cf] bg-[#f0faf2] px-3 py-1.5">
+                  <span className="h-2 w-2 rounded-full bg-[#4caf72]" />
+                  <span className="text-xs font-medium text-[#305b39]">
+                    Requires <strong>@mannsathi.com</strong> email
+                  </span>
+                </div>
               </div>
 
+              {/* Global error banner */}
               {error && (
-                <div className="mt-6 rounded-2xl border border-red-100 bg-red-50 px-4 py-3">
+                <div className="mt-6 flex items-start gap-3 rounded-2xl border border-red-100 bg-red-50 px-4 py-3">
+                  <svg className="w-5 h-5 text-red-500 mt-0.5 shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                  </svg>
                   <p className="text-sm text-red-600">{error}</p>
                 </div>
               )}
 
-              <form onSubmit={handleSubmit} className="mt-6 space-y-6">
-                <div className="space-y-2">
-                  <label className="block text-sm font-medium text-neutral-800">Email</label>
+              <form onSubmit={handleSubmit} className="mt-6 space-y-5" noValidate>
+                {/* Email */}
+                <div className="space-y-1">
+                  <label className="block text-sm font-medium text-neutral-800">
+                    Email
+                    <span className="ml-2 text-xs font-normal text-neutral-400">(only @mannsathi.com)</span>
+                  </label>
                   <input
                     type="email"
                     name="email"
                     value={form.email}
                     onChange={handleChange}
-                    className="w-full rounded-2xl border border-[#e3ded0] bg-[#fffdf7] px-4 py-3 text-sm text-[#243630] outline-none transition focus:border-[#89ad8f] focus:ring-2 focus:ring-[#c9e2cf]"
-                    placeholder="counselor@example.com"
+                    onBlur={handleBlur}
+                    className={`w-full rounded-2xl border bg-[#fffdf7] px-4 py-3 text-sm text-[#243630] outline-none transition focus:ring-2 ${fieldBorder("email")}`}
+                    placeholder="yourname@mannsathi.com"
                     required
                   />
+                  {fieldErrors.email && (
+                    <p className="text-xs text-red-500 pl-1">{fieldErrors.email}</p>
+                  )}
                 </div>
 
-                <div className="space-y-2">
+                {/* Password */}
+                <div className="space-y-1">
                   <label className="block text-sm font-medium text-neutral-800">Password</label>
                   <input
                     type="password"
                     name="password"
                     value={form.password}
                     onChange={handleChange}
-                    className="w-full rounded-2xl border border-[#e3ded0] bg-[#fffdf7] px-4 py-3 text-sm text-[#243630] outline-none transition focus:border-[#89ad8f] focus:ring-2 focus:ring-[#c9e2cf]"
+                    onBlur={handleBlur}
+                    className={`w-full rounded-2xl border bg-[#fffdf7] px-4 py-3 text-sm text-[#243630] outline-none transition focus:ring-2 ${fieldBorder("password")}`}
                     placeholder="••••••••"
                     required
                   />
+                  {fieldErrors.password && (
+                    <p className="text-xs text-red-500 pl-1">{fieldErrors.password}</p>
+                  )}
                 </div>
 
                 <button

@@ -46,18 +46,19 @@ class CounselorDashboardController extends Controller
         $data = $appointments->map(function ($a) use ($now) {
             $dt = $a->date_time ? Carbon::parse($a->date_time) : null;
 
-            $patientName =
-                $a->user?->name
-                ?? $a->name
-                ?? $a->guest_name
-                ?? 'Unknown patient';
+           $patientName =
+    $a->user?->name
+    ?? $a->name
+    ?? 'Anonymous';
 
             $rawStatus = strtolower(trim((string) ($a->status ?? 'pending')));
             $status = $a->status ?? 'pending';
 
+            $sessionEnd = $dt ? (clone $dt)->addHour() : null;
+
             if (
-                $dt &&
-                $dt->lt($now) &&
+                $sessionEnd &&
+                $sessionEnd->lt($now) &&
                 !in_array($rawStatus, ['completed', 'cancelled', 'canceled', 'declined'])
             ) {
                 $status = 'completed';

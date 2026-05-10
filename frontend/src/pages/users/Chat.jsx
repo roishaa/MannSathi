@@ -7,6 +7,12 @@ const SESSION_DURATION_MINUTES = 60;
 export default function Chat() {
   const { id } = useParams();
 
+  const userToken =
+    localStorage.getItem("user_token") || localStorage.getItem("auth_token");
+  const userHeaders = userToken
+    ? { Authorization: `Bearer ${userToken}` }
+    : undefined;
+
   const [appointment, setAppointment] = useState(null);
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -16,6 +22,7 @@ export default function Chat() {
   const [newMessage, setNewMessage] = useState("");
 
   const messagesEndRef = useRef(null);
+  const pollRef = useRef(false);
 
   const isValidDate = (d) => d instanceof Date && !Number.isNaN(d.getTime());
 
@@ -65,11 +72,21 @@ export default function Chat() {
     const possibleTimes = [appt.time, appt.rawTime, appt.session_time];
 
     for (const dateValue of possibleDates) {
+      if (!dateValue) continue;
       for (const timeValue of possibleTimes) {
+        if (!timeValue) continue;
         const dt = buildLocalDateTime(dateValue, timeValue);
         if (dt) return dt;
       }
     }
+
+    console.warn("Could not parse session start from appointment:", {
+      date_time: appt.date_time,
+      date: appt.date,
+      time: appt.time,
+      rawDate: appt.rawDate,
+      rawTime: appt.rawTime,
+    });
 
     return null;
   };
@@ -80,12 +97,53 @@ export default function Chat() {
     try {
       setAppointmentLoading(true);
 
-      const res = await API.get("/user/appointments");
+      const res = await API.get("/user/appointments", {
+        headers: userHeaders,
+      });
+
       const rawAppointments = Array.isArray(res.data)
         ? res.data
-        : res.data?.appointments || res.data?.data || [];
+        : res.data?.items || res.data?.appointments || res.data?.data || [];
 
-      const found = rawAppointments.find((item) => String(item.id) === String(id));
+      let found = rawAppointments.find((item) => String(item.id) === String(id));
+
+      if (!found) {
+        const sessionRes = await API.get("/user/sessions", {
+          headers: userHeaders,
+        });
+
+        const rawSessions = Array.isArray(sessionRes.data)
+          ? sessionRes.data
+          : sessionRes.data?.items ||
+            sessionRes.data?.sessions ||
+            sessionRes.data?.data ||
+            [];
+
+        const session = rawSessions.find((item) => String(item.id) === String(id));
+
+        if (session) {
+          found = {
+            id: session.id,
+            status: session.status,
+            date_time: session.date_time,
+            date: session.date,
+            time: session.time,
+            counselor_name:
+              session.counselor_name || session.counselor?.name || "Counselor",
+            counselor: session.counselor,
+          };
+        }
+      }
+
+      if (!found) {
+        console.warn(
+          "Appointment not found in response. ID:",
+          id,
+          "Available IDs:",
+          rawAppointments.map((a) => a.id)
+        );
+      }
+
       setAppointment(found || null);
     } catch (err) {
       console.error("Failed to load appointment info:", err);
@@ -95,20 +153,28 @@ export default function Chat() {
     }
   };
 
-  const fetchMessages = async () => {
+  const fetchMessages = async (isFirst = false) => {
     if (!id) return;
 
     try {
-      setLoading(true);
+      if (isFirst) setLoading(true);
       setError("");
 
-      const res = await API.get(`/appointments/${id}/messages`);
-      setMessages(res.data?.messages || []);
+      const res = await API.get(`/appointments/${id}/messages`, {
+        headers: userHeaders,
+      });
+
+      const msgs = res.data?.messages || [];
+      setMessages(msgs);
     } catch (err) {
-      console.error("Failed to load user chat messages:", err);
+      console.error("Failed to load user chat messages:", {
+        error: err?.message,
+        status: err?.response?.status,
+        data: err?.response?.data,
+      });
       setError(err?.response?.data?.message || "Could not load chat messages.");
     } finally {
-      setLoading(false);
+      if (isFirst) setLoading(false);
     }
   };
 
@@ -194,14 +260,20 @@ export default function Chat() {
       setSending(true);
       setError("");
 
-      await API.post(`/appointments/${id}/messages`, {
-        message: newMessage.trim(),
-      });
+      await API.post(
+        `/appointments/${id}/messages`,
+        { message: newMessage.trim() },
+        { headers: userHeaders }
+      );
 
       setNewMessage("");
       await fetchMessages();
     } catch (err) {
-      console.error("Failed to send user message:", err);
+      console.error("Failed to send user message:", {
+        error: err?.message,
+        status: err?.response?.status,
+        data: err?.response?.data,
+      });
       setError(err?.response?.data?.message || "Could not send message.");
     } finally {
       setSending(false);
@@ -217,16 +289,21 @@ export default function Chat() {
 
   useEffect(() => {
     if (!id) return;
+    if (pollRef.current) return;
+    pollRef.current = true;
 
     loadAppointment();
-    fetchMessages();
+    fetchMessages(true);
 
     const interval = setInterval(() => {
       loadAppointment();
-      fetchMessages();
+      fetchMessages(false);
     }, 3000);
 
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      pollRef.current = false;
+    };
   }, [id]);
 
   useEffect(() => {
@@ -240,115 +317,246 @@ export default function Chat() {
     "Counselor";
 
   return (
-    <div className="min-h-screen bg-[#f8f6f0] px-5 md:px-10 py-8">
-      <div className="flex items-center justify-between mb-6">
-        <Link to="/users/dashboard" className="text-sm underline text-[#1f4e43]">
-          ← Back to Dashboard
-        </Link>
-      </div>
-
-      <div className="bg-white rounded-3xl border border-[#e5e7eb] shadow-sm p-6">
-        <h1 className="text-xl font-semibold text-[#1e293b]">Session Chat</h1>
-        <p className="text-sm text-[#6b7280] mt-1">
-          Private chat with your counselor.
-        </p>
-
-        {appointmentLoading ? (
-          <div className="mt-4 rounded-2xl border border-[#e5e7eb] bg-[#f9fafb] px-4 py-3 text-sm text-[#6b7280]">
-            Loading session details...
-          </div>
-        ) : (
-          <div
-            className={`mt-4 rounded-2xl px-4 py-3 text-sm border ${
-              chatState.bannerType === "success"
-                ? "border-green-200 bg-green-50 text-green-700"
-                : "border-red-200 bg-red-50 text-red-600"
-            }`}
+    <div className="min-h-screen bg-gradient-to-br from-[#f7f8fc] via-[#eef7f3] to-[#f9fafb] px-4 py-6 md:px-8 lg:px-12">
+      <div className="mx-auto max-w-5xl">
+        <div className="mb-5">
+          <Link
+            to="/users/dashboard"
+            className="inline-flex items-center gap-2 rounded-full border border-[#d7e3dc] bg-white px-4 py-2 text-sm font-medium text-[#1f4e43] shadow-sm transition hover:bg-[#f4fbf8]"
           >
-            {chatState.bannerText}
-          </div>
-        )}
+            <span>←</span>
+            <span>Back to Dashboard</span>
+          </Link>
+        </div>
 
-        {error && (
-          <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
-            {error}
-          </div>
-        )}
+        <div className="overflow-hidden rounded-[28px] border border-white/70 bg-white/90 shadow-[0_20px_60px_rgba(15,23,42,0.08)] backdrop-blur">
+          <div className="border-b border-[#eef2f7] bg-gradient-to-r from-[#1f4e43] to-[#2f6a5b] px-6 py-5 text-white md:px-8">
+            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+              <div>
+                <h1 className="text-2xl font-bold tracking-tight">Session Chat</h1>
+                <p className="mt-1 text-sm text-white/80">
+                  Private conversation with {counselorName}
+                </p>
+              </div>
 
-        <div className="mt-5 rounded-3xl border border-[#e5e7eb] bg-[#f9fafb] p-4 h-[420px] flex flex-col">
-          <div className="flex-1 overflow-y-auto space-y-3 pr-1">
-            {!loading && messages.length === 0 && !error && (
-              <div className="text-xs text-[#6b7280] text-center mt-8">
-                No messages yet.
+              <div className="rounded-2xl bg-white/10 px-4 py-3 text-sm backdrop-blur-sm">
+                <div className="text-white/70">Session with</div>
+                <div className="font-semibold">{counselorName}</div>
+              </div>
+            </div>
+          </div>
+
+          <div className="px-5 py-5 md:px-8 md:py-6">
+            {appointmentLoading ? (
+              <div className="mb-5 rounded-2xl border border-[#e5e7eb] bg-[#f8fafc] px-4 py-4 text-sm text-[#64748b]">
+                Loading session details...
+              </div>
+            ) : (
+              <div
+                className={`mb-5 rounded-2xl border px-4 py-4 shadow-sm ${
+                  chatState.bannerType === "success"
+                    ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                    : "border-rose-200 bg-rose-50 text-rose-700"
+                }`}
+              >
+                <div className="font-medium">{chatState.bannerText}</div>
+
+                {appointment && (
+                  <div className="mt-2 text-xs opacity-80">
+                    Session:{" "}
+                    {appointment.date ||
+                      appointmentInfo.sessionStart?.toDateString()}{" "}
+                    at{" "}
+                    {appointment.time ||
+                      appointmentInfo.sessionStart?.toLocaleTimeString([], {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                  </div>
+                )}
               </div>
             )}
 
-            {messages.map((msg, index) => {
-              const senderType = String(msg.sender_type || "").toLowerCase();
-              const isUser = senderType === "user";
-              const label = isUser ? "USER" : "COUNSELOR";
-              const messageText = msg.message || msg.content || "";
-              const timestamp = msg.created_at
-                ? new Date(msg.created_at).toLocaleTimeString([], {
-                    hour: "numeric",
-                    minute: "2-digit",
-                  })
-                : "";
+            {error && (
+              <div className="mb-5 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-4 text-sm text-rose-700 shadow-sm">
+                {error}
+              </div>
+            )}
 
-              return (
-                <div
-                  key={msg.id || index}
-                  className={`flex ${isUser ? "justify-end" : "justify-start"}`}
-                >
-                  <div
-                    className={`max-w-[80%] rounded-2xl px-4 py-3 text-sm border ${
-                      isUser
-                        ? "bg-[#dff3e4] text-[#1f4d35] border-[#b9dec3]"
-                        : "bg-white text-[#1e293b] border-[#e5e7eb]"
-                    }`}
-                  >
-                    <div className="text-[11px] uppercase font-semibold opacity-70 mb-1">
-                      {label}
+            <div className="grid gap-5 lg:grid-cols-[280px_1fr]">
+              <div className="rounded-[24px] border border-[#e9eef5] bg-[#f8fafc] p-5 shadow-sm">
+                <h2 className="text-base font-semibold text-[#0f172a]">
+                  Chat Details
+                </h2>
+
+                <div className="mt-4 space-y-4 text-sm">
+                  <div className="rounded-2xl bg-white p-4 shadow-sm">
+                    <div className="text-xs font-medium uppercase tracking-wide text-[#94a3b8]">
+                      Counselor
                     </div>
-
-                    <div className="whitespace-pre-wrap break-words">
-                      {messageText}
+                    <div className="mt-1 font-semibold text-[#1e293b]">
+                      {counselorName}
                     </div>
+                  </div>
 
-                    {timestamp && (
-                      <div className="text-[10px] opacity-60 mt-1">
-                        {timestamp}
-                      </div>
-                    )}
+                  <div className="rounded-2xl bg-white p-4 shadow-sm">
+                    <div className="text-xs font-medium uppercase tracking-wide text-[#94a3b8]">
+                      Status
+                    </div>
+                    <div className="mt-1 font-semibold text-[#1e293b]">
+                      {appointment?.status || "Pending"}
+                    </div>
+                  </div>
+
+                  <div className="rounded-2xl bg-white p-4 shadow-sm">
+                    <div className="text-xs font-medium uppercase tracking-wide text-[#94a3b8]">
+                      Duration
+                    </div>
+                    <div className="mt-1 font-semibold text-[#1e293b]">
+                      {SESSION_DURATION_MINUTES} minutes
+                    </div>
+                  </div>
+
+                  <div className="rounded-2xl bg-white p-4 shadow-sm">
+                    <div className="text-xs font-medium uppercase tracking-wide text-[#94a3b8]">
+                      Privacy
+                    </div>
+                    <div className="mt-1 text-[#475569]">
+                      This chat is only for you and your counselor.
+                    </div>
                   </div>
                 </div>
-              );
-            })}
+              </div>
 
-            <div ref={messagesEndRef} />
-          </div>
+              <div className="flex h-[72vh] min-h-[560px] flex-col rounded-[24px] border border-[#e9eef5] bg-[#fcfcfd] shadow-sm">
+                <div className="flex items-center justify-between border-b border-[#eef2f7] px-5 py-4">
+                  <div>
+                    <h2 className="text-base font-semibold text-[#0f172a]">
+                      Conversation
+                    </h2>
+                    <p className="text-xs text-[#64748b]">
+                      Send messages during your active session
+                    </p>
+                  </div>
 
-          <div className="mt-4 flex gap-2">
-            <textarea
-              value={newMessage}
-              onChange={(e) => setNewMessage(e.target.value)}
-              onKeyDown={handleKeyDown}
-              rows={2}
-              disabled={chatState.isLocked || sending}
-              className="flex-1 rounded-2xl border border-[#e5e7eb] px-4 py-3 text-sm outline-none resize-none disabled:bg-[#f3f4f6] disabled:text-[#9ca3af]"
-              placeholder={
-                chatState.isLocked
-                  ? "Chat is unavailable right now..."
-                  : `Message ${counselorName}...`
-              }
-            />
-            <button
-              onClick={handleSend}
-              disabled={chatState.isLocked || sending || !newMessage.trim()}
-              className="rounded-2xl bg-[#1f4e43] text-white px-5 text-sm font-semibold disabled:opacity-60 disabled:cursor-not-allowed"
-            >
-              {sending ? "Sending..." : "Send"}
-            </button>
+                  <div className="rounded-full bg-[#eef7f3] px-3 py-1 text-xs font-medium text-[#1f4e43]">
+                    {messages.length} message{messages.length !== 1 ? "s" : ""}
+                  </div>
+                </div>
+
+                <div className="flex-1 overflow-y-auto bg-[linear-gradient(to_bottom,#f8fafc,#ffffff)] px-4 py-5 md:px-5">
+                  {loading ? (
+                    <div className="flex h-full items-center justify-center text-sm text-[#64748b]">
+                      Loading messages...
+                    </div>
+                  ) : messages.length === 0 && !error ? (
+                    <div className="flex h-full flex-col items-center justify-center text-center">
+                      <div className="rounded-full bg-[#eef7f3] px-4 py-2 text-xs font-semibold uppercase tracking-wide text-[#1f4e43]">
+                        Start Conversation
+                      </div>
+                      <p className="mt-4 max-w-sm text-sm text-[#64748b]">
+                        No messages yet. Once your session is active, you can begin
+                        chatting here.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {messages.map((msg, index) => {
+                        const senderType = String(
+                          msg.sender_type || ""
+                        ).toLowerCase().trim();
+
+                        const isUser =
+                          senderType === "user" ||
+                          senderType === "patient" ||
+                          senderType === "guest";
+
+                        const label = isUser ? "You" : counselorName;
+                        const messageText = msg.message || msg.content || "";
+                        const timestamp = msg.created_at
+                          ? new Date(msg.created_at).toLocaleTimeString([], {
+                              hour: "numeric",
+                              minute: "2-digit",
+                            })
+                          : "";
+
+                        return (
+                          <div
+                            key={msg.id || index}
+                            className={`flex ${
+                              isUser ? "justify-end" : "justify-start"
+                            }`}
+                          >
+                            <div
+                              className={`max-w-[85%] rounded-[22px] px-4 py-3 shadow-sm ${
+                                isUser
+                                  ? "rounded-br-md bg-[#1f4e43] text-white"
+                                  : "rounded-bl-md border border-[#e5e7eb] bg-white text-[#1e293b]"
+                              }`}
+                            >
+                              <div
+                                className={`mb-1 text-[11px] font-semibold ${
+                                  isUser ? "text-white/70" : "text-[#64748b]"
+                                }`}
+                              >
+                                {label}
+                              </div>
+
+                              <div className="whitespace-pre-wrap break-words text-sm leading-6">
+                                {messageText}
+                              </div>
+
+                              {timestamp && (
+                                <div
+                                  className={`mt-2 text-[10px] ${
+                                    isUser ? "text-white/70" : "text-[#94a3b8]"
+                                  }`}
+                                >
+                                  {timestamp}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                      <div ref={messagesEndRef} />
+                    </div>
+                  )}
+                </div>
+
+                <div className="border-t border-[#eef2f7] bg-white px-4 py-4 md:px-5">
+                  <div className="flex items-end gap-3">
+                    <div className="flex-1 rounded-[22px] border border-[#dbe3ea] bg-[#f8fafc] p-2 focus-within:border-[#1f4e43] focus-within:bg-white">
+                      <textarea
+                        value={newMessage}
+                        onChange={(e) => setNewMessage(e.target.value)}
+                        onKeyDown={handleKeyDown}
+                        rows={2}
+                        disabled={chatState.isLocked || sending}
+                        placeholder={
+                          chatState.isLocked
+                            ? "Chat is unavailable right now..."
+                            : `Message ${counselorName}...`
+                        }
+                        className="w-full resize-none bg-transparent px-3 py-2 text-sm text-[#1e293b] outline-none placeholder:text-[#94a3b8] disabled:cursor-not-allowed disabled:text-[#94a3b8]"
+                      />
+                    </div>
+
+                    <button
+                      onClick={handleSend}
+                      disabled={chatState.isLocked || sending || !newMessage.trim()}
+                      className="h-[54px] rounded-[20px] bg-[#1f4e43] px-6 text-sm font-semibold text-white shadow-sm transition hover:bg-[#173d35] disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {sending ? "Sending..." : "Send"}
+                    </button>
+                  </div>
+
+                  <p className="mt-2 text-xs text-[#94a3b8]">
+                    Press Enter to send, Shift + Enter for new line
+                  </p>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>

@@ -34,7 +34,6 @@ export default function UserDashboard() {
       const res = await api.get("/resources/featured");
       setResources(res.data?.items || []);
     } catch (e) {
-      console.log("Resources fetch failed:", e?.response?.status, e?.response?.data || e.message);
       setResources([]);
     } finally {
       setResourcesLoading(false);
@@ -71,7 +70,6 @@ export default function UserDashboard() {
       const res = await api.get("/user/mood-entries?range=7d");
       setMoodItems(res.data?.items || []);
     } catch (e) {
-      console.log("Mood fetch failed:", e?.response?.status, e?.response?.data || e.message);
       setMoodItems([]);
     } finally {
       setMoodLoading(false);
@@ -80,13 +78,40 @@ export default function UserDashboard() {
 
   useEffect(() => {
     loadMood();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.state?.refreshMood]);
 
   const todayMood = moodItems?.[0];
 
   /* =========================
-      SESSIONS - SINGLE SOURCE OF TRUTH
+      LATEST SESSION NOTE
+  ========================= */
+  const [latestNote, setLatestNote] = useState(null);
+  const [latestNoteSession, setLatestNoteSession] = useState(null);
+  const [noteLoading, setNoteLoading] = useState(false);
+
+  const loadLatestNote = async (pastSessionIds) => {
+    if (!pastSessionIds || pastSessionIds.length === 0) return;
+    setNoteLoading(true);
+    try {
+      for (const id of pastSessionIds) {
+        try {
+          const res = await api.get(`/counselor-notes/${id}`);
+          if (res.data?.note?.notes) {
+            setLatestNote(res.data.note);
+            return;
+          }
+        } catch {
+          continue;
+        }
+      }
+      setLatestNote(null);
+    } finally {
+      setNoteLoading(false);
+    }
+  };
+
+  /* =========================
+      SESSIONS
   ========================= */
   const [sessions, setSessions] = useState([]);
   const [sessionsLoading, setSessionsLoading] = useState(false);
@@ -105,7 +130,6 @@ export default function UserDashboard() {
   const safeDatePartsFromDateTime = (rawDateTime) => {
     const d = new Date(rawDateTime);
     if (isNaN(d.getTime())) return { date: null, time: null };
-
     return {
       date: `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`,
       time: `${pad2(d.getHours())}:${pad2(d.getMinutes())}`,
@@ -114,21 +138,17 @@ export default function UserDashboard() {
 
   const normalizeSession = (item) => {
     if (!item) return null;
-
     const rawDateTime =
       item.date_time ||
       item.appointment_datetime ||
       item.appointment_date_time ||
       item.scheduled_at ||
       null;
-
     const fromDateTime = rawDateTime
       ? safeDatePartsFromDateTime(rawDateTime)
       : { date: null, time: null };
-
     const rawDate = item.date || item.appointment_date || fromDateTime.date || null;
     const rawTime = item.time || item.appointment_time || fromDateTime.time || null;
-
     return {
       id: item.id,
       counselor_id: item.counselor_id || item.counselor?.id || null,
@@ -139,7 +159,7 @@ export default function UserDashboard() {
         "Counselor not assigned",
       date: rawDate,
       time: rawTime,
-      type: item.type || item.session_type || "chat",
+      type: String(item.type || item.session_type || "chat").toLowerCase(),
       status: normalizeStatus(item.status),
       payment_status: (item.payment_status || "paid").toLowerCase(),
       meeting_link: item.meeting_link || item.meet_link || null,
@@ -155,34 +175,50 @@ export default function UserDashboard() {
         res.data?.sessions ||
         res.data?.data ||
         (Array.isArray(res.data) ? res.data : []);
-
       const normalized = (rawItems || []).map(normalizeSession).filter(Boolean);
-
-      console.log("RAW SESSIONS:", rawItems);
-      console.log("NORMALIZED SESSIONS:", normalized);
-
       setSessions(normalized);
+      return normalized;
     } catch (e) {
-      console.log("Sessions fetch failed:", e?.response?.status, e?.response?.data || e.message);
       setSessions([]);
+      return [];
     } finally {
       setSessionsLoading(false);
     }
   };
 
   useEffect(() => {
-    loadSessions();
-    loadResources();
+    const init = async () => {
+      const normalized = await loadSessions();
+      loadResources();
+
+      const now = new Date();
+      const pastIds = normalized
+        .filter((s) => {
+          if (!s.date || !s.time) return false;
+          const end = new Date(`${s.date}T${s.time}:00`);
+          end.setMinutes(end.getMinutes() + 45);
+          return now > end;
+        })
+        .sort((a, b) => {
+          const aD = new Date(`${a.date}T${a.time}:00`);
+          const bD = new Date(`${b.date}T${b.time}:00`);
+          return bD - aD;
+        })
+        .map((s) => s.id);
+
+      if (pastIds.length > 0) {
+        const mostRecent = normalized.find((s) => s.id === pastIds[0]);
+        setLatestNoteSession(mostRecent);
+        await loadLatestNote(pastIds);
+      }
+    };
+    init();
   }, []);
 
   useEffect(() => {
     if (pollStartedRef.current) return;
     pollStartedRef.current = true;
-
-    const t = setInterval(() => {
-      loadSessions();
-    }, 10000);
-
+    const t = setInterval(() => { loadSessions(); }, 10000);
     return () => clearInterval(t);
   }, []);
 
@@ -191,10 +227,7 @@ export default function UserDashboard() {
   ========================= */
   const getSessionStart = (session) => {
     if (!session?.date || !session?.time) return null;
-
-    const candidate = `${session.date}T${session.time}:00`;
-    const d = new Date(candidate);
-
+    const d = new Date(`${session.date}T${session.time}:00`);
     if (isNaN(d.getTime())) return null;
     return d;
   };
@@ -226,11 +259,9 @@ export default function UserDashboard() {
   const sortedSessions = [...sessions].sort((a, b) => {
     const aStart = getSessionStart(a);
     const bStart = getSessionStart(b);
-
     if (!aStart && !bStart) return 0;
     if (!aStart) return 1;
     if (!bStart) return -1;
-
     return aStart.getTime() - bStart.getTime();
   });
 
@@ -267,13 +298,16 @@ export default function UserDashboard() {
     sessionStart && sessionEnd ? now >= sessionStart && now <= sessionEnd : false;
   const isAfterSession = sessionEnd ? now > sessionEnd : false;
 
-  const chatUnlocked = Boolean(
+  const sessionUnlocked = Boolean(
     displaySession &&
       hasCounselorAssigned &&
       isSessionConfirmed &&
       isPaymentPaid &&
       isWithinSessionTime
   );
+
+  // ── Is this a video session? ──
+  const isVideoSession = String(displaySession?.type || "").toLowerCase() === "video";
 
   const formatSessionTime = (session) => {
     if (!session?.date || !session?.time) return "the scheduled time";
@@ -293,12 +327,12 @@ export default function UserDashboard() {
       NAV
   ========================= */
   const navItems = [
-    { label: "Dashboard", to: "/users/dashboard", icon: "🏠" },
-    { label: "Search Counselor", to: "/search-doctor", icon: "🧑‍⚕️" },
-    { label: "Sessions", to: "/sessions", icon: "📅" },
-    { label: "Resources", to: "/resources", icon: "📚" },
-    { label: "Payments", to: "/payments", icon: "💳" },
-    { label: "Settings", to: "/settings", icon: "⚙️" },
+    { label: "Dashboard",        to: "/users/dashboard",        icon: "🏠" },
+    { label: "Search Counselor", to: "/search-doctor",          icon: "🧑‍⚕️" },
+    { label: "Sessions",         to: "/sessions",               icon: "📅" },
+    { label: "Resources",        to: "/resources",              icon: "📚" },
+    { label: "Payments",         to: "/payments",               icon: "💳" },
+    { label: "Settings",         to: "/settings",               icon: "⚙️" },
   ];
 
   const isActive = (to) => location.pathname === to;
@@ -306,81 +340,65 @@ export default function UserDashboard() {
   const badgeClass = (status) => {
     const s = normalizeStatus(status);
     const base = "text-[11px] rounded-full px-3 py-1 border whitespace-nowrap capitalize";
-
     if (s === "confirmed") return `${base} bg-emerald-50 border-emerald-200 text-emerald-700`;
-    if (s === "pending") return `${base} bg-amber-50 border-amber-200 text-amber-700`;
+    if (s === "pending")   return `${base} bg-amber-50 border-amber-200 text-amber-700`;
     if (s === "completed") return `${base} bg-green-50 border-green-200 text-green-700`;
     if (s === "cancelled") return `${base} bg-gray-50 border-gray-200 text-gray-700`;
-
     return `${base} bg-[#f9fafb] border-[#e5e7eb] text-[#374151]`;
   };
 
   const quickActions = [
-    { title: "Book session", desc: "Find a counselor", to: "/users/appointments/book", icon: "📌" },
-    { title: "Resources", desc: "Videos & self-help", to: "/resources", icon: "📚" },
-    { title: "Mood check-in", desc: "Track emotions", to: "/users/mood-check", icon: "🙂" },
+    { title: "Book session",  desc: "Find a counselor",      to: "/users/appointments/book", icon: "📌" },
+    { title: "Resources",     desc: "Videos & self-help",    to: "/resources",               icon: "📚" },
+    { title: "Mood check-in", desc: "Track emotions",        to: "/users/mood-check",        icon: "🙂" },
   ];
 
-  const chatAction = {
-    title: "Chat",
-    desc: chatUnlocked ? "Message your counselor" : "Available only during session time",
-    to: chatUnlocked ? `/users/chat/${displaySession?.id}` : "#",
-    icon: "💬",
-    locked: !chatUnlocked,
+  // ── Chat/Video quick action — dynamic based on session type ──
+  const sessionAction = {
+    title: isVideoSession ? "Video Call" : "Chat",
+    desc: sessionUnlocked
+      ? isVideoSession ? "Join your video session" : "Message your counselor"
+      : "Available only during session time",
+    to: sessionUnlocked
+      ? isVideoSession
+        ? `/users/video-room/${displaySession?.id}`
+        : `/users/chat/${displaySession?.id}`
+      : "#",
+    icon: isVideoSession ? "🎥" : "💬",
+    locked: !sessionUnlocked,
   };
 
   const getMoodEmoji = (mood) => {
     const moodMap = {
-      happy: "😊",
-      sad: "😢",
-      anxious: "😰",
-      calm: "😌",
-      angry: "😠",
-      neutral: "😐",
-      excited: "🤩",
-      stressed: "😣",
-      tired: "😴",
-      grateful: "🙏",
+      happy: "😊", sad: "😢", anxious: "😰", calm: "😌",
+      angry: "😠", neutral: "😐", excited: "🤩", stressed: "😣",
+      tired: "😴", grateful: "🙏",
     };
     return moodMap[mood?.toLowerCase()] || "🙂";
   };
 
   return (
     <div className="min-h-screen bg-[#f8f6f0] flex">
+      {/* Mobile top bar */}
       <div className="md:hidden fixed top-0 left-0 right-0 z-40 border-b border-[#e6e5df] bg-white/90 backdrop-blur-xl">
         <div className="px-4 py-3.5 flex items-center justify-between gap-3">
-          <button
-            onClick={() => setOpen(true)}
-            className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-[#dadbd3] bg-white text-[#1f4e43] shadow-sm transition hover:bg-[#f7f8f5]"
-          >
-            ☰
-          </button>
+          <button onClick={() => setOpen(true)} className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-[#dadbd3] bg-white text-[#1f4e43] shadow-sm transition hover:bg-[#f7f8f5]">☰</button>
           <div className="text-center">
             <p className="font-serif text-lg font-semibold tracking-wide text-[#1f4e43]">MannSathi</p>
           </div>
-          <button
-            onClick={handleLogout}
-            className="rounded-2xl border border-[#dadbd3] bg-white px-3.5 py-2 text-xs font-semibold text-[#27584d] shadow-sm transition hover:bg-[#f7f8f5]"
-          >
-            Logout
-          </button>
+          <button onClick={handleLogout} className="rounded-2xl border border-[#dadbd3] bg-white px-3.5 py-2 text-xs font-semibold text-[#27584d] shadow-sm transition hover:bg-[#f7f8f5]">Logout</button>
         </div>
       </div>
 
+      {/* Mobile drawer */}
       {open && (
         <div className="md:hidden fixed inset-0 z-50">
           <div className="absolute inset-0 bg-[#1f4e43]/35 backdrop-blur-[1px]" onClick={() => setOpen(false)} />
           <aside className="absolute left-0 top-0 h-full w-72 bg-gradient-to-b from-[#215c4c] via-[#2b6557] to-[#3f7164] text-white px-6 py-6 shadow-2xl">
             <div className="flex items-center justify-between">
               <div className="font-serif font-semibold text-xl tracking-wide">MannSathi</div>
-              <button
-                onClick={() => setOpen(false)}
-                className="inline-flex h-9 w-9 items-center justify-center rounded-2xl border border-white/20 bg-white/10 text-lg"
-              >
-                ✕
-              </button>
+              <button onClick={() => setOpen(false)} className="inline-flex h-9 w-9 items-center justify-center rounded-2xl border border-white/20 bg-white/10 text-lg">✕</button>
             </div>
-
             <div className="mt-6 rounded-3xl border border-white/20 bg-white/10 p-5 backdrop-blur">
               <p className="text-sm font-semibold text-white">{userName}</p>
               <p className="mt-1 text-xs text-[#d6ebe2]">{userEmail}</p>
@@ -388,35 +406,21 @@ export default function UserDashboard() {
                 Mood: <span className="font-semibold text-white">{moodLoading ? "loading..." : todayMood?.mood || "not checked"}</span>
               </div>
             </div>
-
             <nav className="mt-7 space-y-2 text-sm">
               {navItems.map((item) => (
-                <Link
-                  key={item.to + item.label}
-                  to={item.to}
-                  onClick={() => setOpen(false)}
-                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl transition-all ${
-                    isActive(item.to)
-                      ? "bg-[#f8f6f0] text-[#1f4e43] font-semibold shadow-[0_8px_24px_rgba(20,43,37,0.18)]"
-                      : "text-white/95 hover:bg-white/10"
-                  }`}
-                >
+                <Link key={item.to + item.label} to={item.to} onClick={() => setOpen(false)}
+                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl transition-all ${isActive(item.to) ? "bg-[#f8f6f0] text-[#1f4e43] font-semibold shadow-[0_8px_24px_rgba(20,43,37,0.18)]" : "text-white/95 hover:bg-white/10"}`}>
                   <span className="text-base">{item.icon}</span>
                   <span>{item.label}</span>
                 </Link>
               ))}
             </nav>
-
-            <button
-              onClick={handleLogout}
-              className="mt-8 inline-flex rounded-2xl border border-white/20 bg-white/10 px-4 py-2 text-xs font-semibold text-[#e4efe9]"
-            >
-              Logout
-            </button>
+            <button onClick={handleLogout} className="mt-8 inline-flex rounded-2xl border border-white/20 bg-white/10 px-4 py-2 text-xs font-semibold text-[#e4efe9]">Logout</button>
           </aside>
         </div>
       )}
 
+      {/* Desktop sidebar */}
       <aside className="w-80 hidden md:flex bg-gradient-to-b from-[#255b4e] via-[#2d6154] to-[#466f64] text-white px-7 py-8 flex-col justify-between">
         <div>
           <div className="mb-10 rounded-3xl border border-white/15 bg-white/5 px-5 py-4 backdrop-blur">
@@ -437,51 +441,32 @@ export default function UserDashboard() {
                 <p className="text-xs text-[#d6ebe2] truncate">{userEmail}</p>
               </div>
             </div>
-
             <div className="mt-4 rounded-2xl border border-white/15 bg-black/10 px-3 py-2.5 text-xs text-[#d6ebe2] flex items-center justify-between gap-2">
-              <span>
-                Mood: <span className="font-semibold text-white">{moodLoading ? "loading..." : todayMood?.mood || "not checked"}</span>
-              </span>
-              <Link to="/users/mood-check" className="underline text-[#dfeee7] hover:text-white">
-                update
-              </Link>
+              <span>Mood: <span className="font-semibold text-white">{moodLoading ? "loading..." : todayMood?.mood || "not checked"}</span></span>
+              <Link to="/users/mood-check" className="underline text-[#dfeee7] hover:text-white">update</Link>
             </div>
-
-            <Link
-              to="/users/appointments/book"
-              className="mt-4 inline-flex w-full items-center justify-center rounded-2xl bg-white text-[#1f4e43] text-xs font-semibold px-4 py-2.5 shadow-[0_6px_20px_rgba(16,30,26,0.2)] transition hover:-translate-y-[1px] hover:shadow-[0_10px_24px_rgba(16,30,26,0.24)]"
-            >
+            <Link to="/users/appointments/book" className="mt-4 inline-flex w-full items-center justify-center rounded-2xl bg-white text-[#1f4e43] text-xs font-semibold px-4 py-2.5 shadow-[0_6px_20px_rgba(16,30,26,0.2)] transition hover:-translate-y-[1px] hover:shadow-[0_10px_24px_rgba(16,30,26,0.24)]">
               Book a session
             </Link>
           </div>
 
           <nav className="space-y-2 text-sm">
             {navItems.map((item) => (
-              <Link
-                key={item.to + item.label}
-                to={item.to}
-                className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl transition-all ${
-                  isActive(item.to)
-                    ? "bg-[#f8f6f0] text-[#1f4e43] font-semibold shadow-[0_10px_24px_rgba(20,43,37,0.18)]"
-                    : "text-white/95 hover:bg-white/10"
-                }`}
-              >
+              <Link key={item.to + item.label} to={item.to}
+                className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl transition-all ${isActive(item.to) ? "bg-[#f8f6f0] text-[#1f4e43] font-semibold shadow-[0_10px_24px_rgba(20,43,37,0.18)]" : "text-white/95 hover:bg-white/10"}`}>
                 <span className="text-base">{item.icon}</span>
                 <span>{item.label}</span>
               </Link>
             ))}
           </nav>
         </div>
-
-        <button
-          onClick={handleLogout}
-          className="text-xs font-semibold rounded-2xl border border-white/20 bg-white/10 px-4 py-2 text-left text-[#e2efe8] hover:text-white"
-        >
-          Logout
-        </button>
+        <button onClick={handleLogout} className="text-xs font-semibold rounded-2xl border border-white/20 bg-white/10 px-4 py-2 text-left text-[#e2efe8] hover:text-white">Logout</button>
       </aside>
 
+      {/* Main content */}
       <main className="flex-1 px-4 md:px-10 xl:px-14 py-6 md:py-10 pt-24 md:pt-10 bg-[radial-gradient(circle_at_top_right,_#ffffff_0%,_#f8f6f0_45%,_#f3f0eb_100%)]">
+
+        {/* Welcome header */}
         <div className="mb-8 rounded-3xl border border-[#e7e5de] bg-white/75 p-5 md:p-7 shadow-[0_14px_40px_rgba(24,45,38,0.08)] backdrop-blur-sm">
           <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-5">
             <div>
@@ -492,18 +477,8 @@ export default function UserDashboard() {
               <p className="mt-3 text-sm md:text-base text-[#5f6d68] font-medium">Your mental wellness journey starts here</p>
             </div>
             <div className="flex gap-3 flex-wrap md:flex-nowrap">
-              <Link
-                to="/users/mood-check"
-                className="px-5 py-2.5 bg-white border border-[#d7d9d0] rounded-2xl text-sm font-semibold text-[#27584d] hover:bg-[#f7f8f5] transition shadow-sm"
-              >
-                📊 Update mood
-              </Link>
-              <Link
-                to="/users/appointments/book"
-                className="px-5 py-2.5 bg-gradient-to-r from-[#1f4e43] to-[#2a6b5e] text-white rounded-2xl text-sm font-semibold hover:shadow-lg hover:-translate-y-0.5 transition shadow-md"
-              >
-                ➕ Book session
-              </Link>
+              <Link to="/users/mood-check" className="px-5 py-2.5 bg-white border border-[#d7d9d0] rounded-2xl text-sm font-semibold text-[#27584d] hover:bg-[#f7f8f5] transition shadow-sm">📊 Update mood</Link>
+              <Link to="/users/appointments/book" className="px-5 py-2.5 bg-gradient-to-r from-[#1f4e43] to-[#2a6b5e] text-white rounded-2xl text-sm font-semibold hover:shadow-lg hover:-translate-y-0.5 transition shadow-md">➕ Book session</Link>
             </div>
           </div>
 
@@ -513,19 +488,16 @@ export default function UserDashboard() {
               <p className="mt-2 text-2xl font-bold text-[#1f4e43]">{moodLoading ? "..." : todayMood?.mood || "—"}</p>
               <p className="text-[11px] text-[#95a19b] mt-1">Last checked today</p>
             </div>
-
             <div className="bg-white rounded-3xl p-4 border border-[#e7e5de] shadow-sm hover:shadow-md transition">
               <div className="text-[11px] uppercase tracking-wider text-[#83918b] font-semibold">Upcoming Sessions</div>
               <p className="mt-2 text-2xl font-bold text-[#1f4e43]">{sessionsLoading ? "..." : upcoming.length}</p>
               <p className="text-[11px] text-[#95a19b] mt-1">{upcoming.length === 1 ? "coming up" : "scheduled"}</p>
             </div>
-
             <div className="bg-white rounded-3xl p-4 border border-[#e7e5de] shadow-sm hover:shadow-md transition">
               <div className="text-[11px] uppercase tracking-wider text-[#83918b] font-semibold">Mood Track</div>
               <p className="mt-2 text-2xl font-bold text-[#1f4e43]">{moodLoading ? "..." : moodItems.length}</p>
               <p className="text-[11px] text-[#95a19b] mt-1">entries this week</p>
             </div>
-
             <div className="bg-gradient-to-br from-[#f0f9f7] to-[#e8f4f1] rounded-3xl p-4 border border-[#d5e8e4] shadow-sm hover:shadow-md transition">
               <div className="text-[11px] uppercase tracking-wider text-[#1f4e43] font-semibold">Status</div>
               <p className="mt-2 text-2xl font-bold text-[#1f4e43]">{displaySession ? "Booked" : "Free"}</p>
@@ -534,6 +506,7 @@ export default function UserDashboard() {
           </div>
         </div>
 
+        {/* Next Session */}
         <section className="mb-10">
           <div className="rounded-3xl border border-[#e7e5de] bg-gradient-to-b from-white to-[#fbfbf9] shadow-[0_18px_44px_rgba(24,45,38,0.09)] overflow-hidden">
             <div className="bg-gradient-to-r from-[#1f4e43] to-[#2a6b5e] px-6 md:px-8 py-6 text-white">
@@ -556,17 +529,11 @@ export default function UserDashboard() {
                 <div className="space-y-6">
                   <div className="rounded-3xl border border-[#e7e5de] bg-white p-5 md:p-6 shadow-sm">
                     <div className="flex flex-col md:flex-row md:items-start gap-4 md:gap-5">
-                      <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-[#e3f3e6] to-[#d5e8e4] flex items-center justify-center text-3xl flex-shrink-0">
-                        👨‍⚕️
-                      </div>
+                      <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-[#e3f3e6] to-[#d5e8e4] flex items-center justify-center text-3xl flex-shrink-0">👨‍⚕️</div>
                       <div className="flex-1">
                         <p className="text-xs text-[#8f9a95] uppercase tracking-[0.16em] font-semibold">Counselor</p>
-                        <p className="mt-2 text-xl md:text-2xl font-bold text-[#1c2522]">
-                          {displaySession.counselor_name || "Counselor not assigned"}
-                        </p>
-                        <p className="mt-2 text-sm text-[#5f6d68]">
-                          {displaySession.type === "video" ? "🎥 Video call" : "💬 Chat session"}
-                        </p>
+                        <p className="mt-2 text-xl md:text-2xl font-bold text-[#1c2522]">{displaySession.counselor_name || "Counselor not assigned"}</p>
+                        <p className="mt-2 text-sm text-[#5f6d68]">{isVideoSession ? "🎥 Video call" : "💬 Chat session"}</p>
                       </div>
                       <span className={badgeClass(displaySession.status)}>{displaySession.status || "pending"}</span>
                     </div>
@@ -583,15 +550,11 @@ export default function UserDashboard() {
                         </div>
                         <div>
                           <p className="text-[11px] text-[#8f9a95] uppercase tracking-wider font-semibold">Session Type</p>
-                          <p className="mt-2 text-lg font-bold text-[#1f4e43] capitalize">
-                            {displaySession.type === "video" ? "Video" : "Chat"}
-                          </p>
+                          <p className="mt-2 text-lg font-bold text-[#1f4e43]">{isVideoSession ? "🎥 Video" : "💬 Chat"}</p>
                         </div>
                         <div>
                           <p className="text-[11px] text-[#8f9a95] uppercase tracking-wider font-semibold">Payment</p>
-                          <p className="mt-2 text-lg font-bold text-[#1f4e43] capitalize">
-                            {displaySession.payment_status || "paid"}
-                          </p>
+                          <p className="mt-2 text-lg font-bold text-[#1f4e43] capitalize">{displaySession.payment_status || "paid"}</p>
                         </div>
                       </div>
                     </div>
@@ -612,9 +575,7 @@ export default function UserDashboard() {
                       <span className="text-xl flex-shrink-0">ℹ️</span>
                       <div>
                         <p className="font-semibold text-[#27584d] text-sm">Awaiting counselor confirmation</p>
-                        <p className="text-xs text-[#3f5e56] mt-1">
-                          Chat will unlock only after confirmation and at the scheduled session time.
-                        </p>
+                        <p className="text-xs text-[#3f5e56] mt-1">{isVideoSession ? "Video" : "Chat"} will unlock only after confirmation and at the scheduled session time.</p>
                       </div>
                     </div>
                   )}
@@ -624,7 +585,7 @@ export default function UserDashboard() {
                       <span className="text-xl flex-shrink-0">💳</span>
                       <div>
                         <p className="font-semibold text-red-900 text-sm">Payment pending</p>
-                        <p className="text-xs text-red-800 mt-1">Chat will unlock after payment is confirmed.</p>
+                        <p className="text-xs text-red-800 mt-1">{isVideoSession ? "Video" : "Chat"} will unlock after payment is confirmed.</p>
                       </div>
                     </div>
                   )}
@@ -634,17 +595,21 @@ export default function UserDashboard() {
                       <span className="text-xl flex-shrink-0">⏰</span>
                       <div>
                         <p className="font-semibold text-[#27584d] text-sm">Session confirmed</p>
-                        <p className="text-xs text-[#3f5e56] mt-1">Chat will be available at {formatSessionTime(displaySession)}.</p>
+                        <p className="text-xs text-[#3f5e56] mt-1">{isVideoSession ? "Video call" : "Chat"} will be available at {formatSessionTime(displaySession)}.</p>
                       </div>
                     </div>
                   )}
 
-                  {chatUnlocked && (
+                  {sessionUnlocked && (
                     <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3.5 flex gap-3">
                       <span className="text-xl flex-shrink-0">✅</span>
                       <div>
                         <p className="font-semibold text-emerald-900 text-sm">Session is live now</p>
-                        <p className="text-xs text-emerald-800 mt-1">You can now start chatting with your counselor.</p>
+                        <p className="text-xs text-emerald-800 mt-1">
+                          {isVideoSession
+                            ? "You can now join your video call with your counselor."
+                            : "You can now start chatting with your counselor."}
+                        </p>
                       </div>
                     </div>
                   )}
@@ -659,49 +624,36 @@ export default function UserDashboard() {
                     </div>
                   )}
 
+                  {/* ── Action buttons — dynamic for chat vs video ── */}
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-2">
-                    {chatUnlocked ? (
+                    {sessionUnlocked ? (
                       <>
-                        <Link
-                          to={`/users/chat/${displaySession?.id}`}
-                          className="px-6 py-3 bg-gradient-to-r from-[#1f4e43] to-[#2a6b5e] text-white rounded-2xl font-semibold hover:shadow-lg hover:-translate-y-0.5 transition flex items-center justify-center gap-2 shadow-md"
-                        >
-                          💬 Start chat
-                        </Link>
-
-                        {displaySession?.meeting_link && (
-                          <a
-                            href={displaySession.meeting_link}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="px-6 py-3 bg-white border border-[#1f4e43] text-[#1f4e43] rounded-2xl font-semibold hover:bg-[#f0f9f7] transition flex items-center justify-center gap-2"
+                        {isVideoSession ? (
+                          <Link
+                            to={`/users/video-room/${displaySession?.id}`}
+                            className="px-6 py-3 bg-gradient-to-r from-[#1f4e43] to-[#2a6b5e] text-white rounded-2xl font-semibold hover:shadow-lg hover:-translate-y-0.5 transition flex items-center justify-center gap-2 shadow-md"
                           >
-                            🎥 Join meeting
-                          </a>
+                            🎥 Start video
+                          </Link>
+                        ) : (
+                          <Link
+                            to={`/users/chat/${displaySession?.id}`}
+                            className="px-6 py-3 bg-gradient-to-r from-[#1f4e43] to-[#2a6b5e] text-white rounded-2xl font-semibold hover:shadow-lg hover:-translate-y-0.5 transition flex items-center justify-center gap-2 shadow-md"
+                          >
+                            💬 Start chat
+                          </Link>
                         )}
-
-                        <Link
-                          to="/sessions"
-                          className="px-6 py-3 bg-white border border-[#d7d9d0] text-[#1f4e43] rounded-2xl font-semibold hover:bg-[#f7f8f5] transition flex items-center justify-center gap-2"
-                        >
-                          📋 View all
-                        </Link>
+                        {displaySession?.meeting_link && (
+                          <a href={displaySession.meeting_link} target="_blank" rel="noreferrer" className="px-6 py-3 bg-white border border-[#1f4e43] text-[#1f4e43] rounded-2xl font-semibold hover:bg-[#f0f9f7] transition flex items-center justify-center gap-2">🎥 Join meeting</a>
+                        )}
+                        <Link to="/sessions" className="px-6 py-3 bg-white border border-[#d7d9d0] text-[#1f4e43] rounded-2xl font-semibold hover:bg-[#f7f8f5] transition flex items-center justify-center gap-2">📋 View all</Link>
                       </>
                     ) : (
                       <>
-                        <button
-                          disabled
-                          className="md:col-span-2 px-6 py-3 bg-gray-200 text-gray-500 rounded-2xl font-semibold cursor-not-allowed"
-                        >
-                          💬 Chat locked until session time
+                        <button disabled className="md:col-span-2 px-6 py-3 bg-gray-200 text-gray-500 rounded-2xl font-semibold cursor-not-allowed">
+                          {isVideoSession ? "🎥 Video locked until session time" : "💬 Chat locked until session time"}
                         </button>
-
-                        <Link
-                          to="/sessions"
-                          className="px-6 py-3 bg-white border border-[#d7d9d0] text-[#1f4e43] rounded-2xl font-semibold hover:bg-[#f7f8f5] transition flex items-center justify-center gap-2"
-                        >
-                          📋 View all
-                        </Link>
+                        <Link to="/sessions" className="px-6 py-3 bg-white border border-[#d7d9d0] text-[#1f4e43] rounded-2xl font-semibold hover:bg-[#f7f8f5] transition flex items-center justify-center gap-2">📋 View all</Link>
                       </>
                     )}
                   </div>
@@ -711,12 +663,7 @@ export default function UserDashboard() {
                   <div className="text-6xl mb-4">📭</div>
                   <h3 className="text-xl font-bold text-[#1f4e43] mb-2">No session booked yet</h3>
                   <p className="text-[#666] mb-6">Let&apos;s get you matched with a counselor for your first session</p>
-                  <Link
-                    to="/users/appointments/book"
-                    className="inline-flex px-6 py-3 bg-gradient-to-r from-[#1f4e43] to-[#2a6b5e] text-white rounded-2xl font-semibold hover:shadow-lg hover:-translate-y-0.5 transition shadow-md"
-                  >
-                    ✨ Book your first session
-                  </Link>
+                  <Link to="/users/appointments/book" className="inline-flex px-6 py-3 bg-gradient-to-r from-[#1f4e43] to-[#2a6b5e] text-white rounded-2xl font-semibold hover:shadow-lg hover:-translate-y-0.5 transition shadow-md">✨ Book your first session</Link>
                 </div>
               )}
             </div>
@@ -725,14 +672,55 @@ export default function UserDashboard() {
               <span className="text-lg flex-shrink-0 mt-0.5">💡</span>
               <div className="text-sm">
                 <p className="font-semibold text-[#1f4e43]">Pro tip:</p>
-                <p className="text-[#666] mt-1">
-                  Keep your mood journal updated before sessions. This helps your counselor provide better guidance.
-                </p>
+                <p className="text-[#666] mt-1">Keep your mood journal updated before sessions. This helps your counselor provide better guidance.</p>
               </div>
             </div>
           </div>
         </section>
 
+        {/* Session Notes */}
+        {(latestNote || noteLoading) && (
+          <section className="mb-10">
+            <div className="rounded-3xl border border-[#bbf7d0] bg-gradient-to-b from-[#f0fdf4] to-[#f8fffe] shadow-[0_14px_40px_rgba(24,45,38,0.07)] overflow-hidden">
+              <div className="bg-gradient-to-r from-[#166534] to-[#15803d] px-6 md:px-8 py-5 text-white flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <span className="text-2xl">📋</span>
+                  <div>
+                    <h2 className="text-base md:text-lg font-bold">Session Notes</h2>
+                    <p className="text-sm text-white/80">
+                      From your last session{latestNoteSession?.counselor_name ? ` with ${latestNoteSession.counselor_name}` : ""}
+                    </p>
+                  </div>
+                </div>
+                <Link to="/sessions" className="text-xs font-semibold text-white/80 hover:text-white underline underline-offset-2 transition">View all sessions →</Link>
+              </div>
+              <div className="px-6 md:px-8 py-6">
+                {noteLoading ? (
+                  <div className="space-y-3">
+                    <div className="h-4 bg-[#d1fae5] rounded-xl w-3/4 animate-pulse" />
+                    <div className="h-4 bg-[#d1fae5] rounded-xl w-1/2 animate-pulse" />
+                  </div>
+                ) : latestNote?.notes ? (
+                  <div>
+                    <div className="rounded-2xl border border-[#bbf7d0] bg-white px-5 py-4 text-sm text-[#166534] whitespace-pre-wrap leading-relaxed">{latestNote.notes}</div>
+                    {latestNote.updated_at && (
+                      <p className="mt-3 text-xs text-[#6b7280]">
+                        Added on {new Date(latestNote.updated_at).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}
+                      </p>
+                    )}
+                    <div className="mt-4">
+                      <Link to="/sessions" className="inline-flex items-center gap-2 px-4 py-2 rounded-2xl bg-[#1f4e43] text-white text-xs font-semibold hover:opacity-90 transition">📅 View all session notes</Link>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-sm text-[#6b7280] italic">No notes were added for your last session.</p>
+                )}
+              </div>
+            </div>
+          </section>
+        )}
+
+        {/* Resources */}
         <section className="mb-10">
           <div className="rounded-2xl border border-[#e7e5de] bg-white p-5 md:p-6 shadow-sm">
             <div className="flex items-center justify-between gap-3">
@@ -740,74 +728,28 @@ export default function UserDashboard() {
                 <h3 className="text-lg font-bold text-[#1f4e43]">Resources</h3>
                 <p className="text-sm text-[#6a7772]">Mental health practices, videos, and self-help support</p>
               </div>
-              <Link
-                to="/resources"
-                className="px-3.5 py-2 rounded-xl border border-[#d7d9d0] text-xs font-semibold text-[#1f4e43] hover:bg-[#f7f8f5] transition"
-              >
-                View all
-              </Link>
+              <Link to="/resources" className="px-3.5 py-2 rounded-xl border border-[#d7d9d0] text-xs font-semibold text-[#1f4e43] hover:bg-[#f7f8f5] transition">View all</Link>
             </div>
-
             <div className="mt-4 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
               {resourcesLoading ? (
-                <>
-                  {[1, 2, 3].map((item) => (
-                    <div
-                      key={item}
-                      className="rounded-2xl border border-[#e8e6df] bg-[#fbfbf9] p-5 shadow-sm animate-pulse"
-                    >
-                      <div className="w-12 h-12 rounded-2xl bg-[#e8ece7]" />
-                      <div className="mt-4 h-4 w-40 rounded bg-[#e8ece7]" />
-                      <div className="mt-3 h-3 w-full rounded bg-[#e8ece7]" />
-                      <div className="mt-2 h-3 w-3/4 rounded bg-[#e8ece7]" />
-                    </div>
-                  ))}
-                </>
+                [1, 2, 3].map((item) => (
+                  <div key={item} className="rounded-2xl border border-[#e8e6df] bg-[#fbfbf9] p-5 shadow-sm animate-pulse">
+                    <div className="w-12 h-12 rounded-2xl bg-[#e8ece7]" />
+                    <div className="mt-4 h-4 w-40 rounded bg-[#e8ece7]" />
+                    <div className="mt-3 h-3 w-full rounded bg-[#e8ece7]" />
+                  </div>
+                ))
               ) : resources.length > 0 ? (
                 resources.slice(0, 3).map((resource) => (
-                  <div
-                    key={resource.id}
-                    className="rounded-2xl border border-[#e8e6df] bg-[#fbfbf9] p-5 shadow-sm hover:shadow-md transition"
-                  >
-                    <div
-                      className={`w-12 h-12 rounded-2xl ${getResourceIconBg(resource.type)} flex items-center justify-center text-2xl`}
-                    >
-                      {getResourceIcon(resource.type)}
-                    </div>
-
+                  <div key={resource.id} className="rounded-2xl border border-[#e8e6df] bg-[#fbfbf9] p-5 shadow-sm hover:shadow-md transition">
+                    <div className={`w-12 h-12 rounded-2xl ${getResourceIconBg(resource.type)} flex items-center justify-center text-2xl`}>{getResourceIcon(resource.type)}</div>
                     <div className="mt-4 flex items-center justify-between gap-3">
-                      <h4 className="text-base font-bold text-[#1f4e43] leading-snug">
-                        {resource.title}
-                      </h4>
-                      <span className="shrink-0 rounded-full border border-[#d8ddd7] bg-white px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-[#60706a]">
-                        {resource.type || "resource"}
-                      </span>
+                      <h4 className="text-base font-bold text-[#1f4e43] leading-snug">{resource.title}</h4>
+                      <span className="shrink-0 rounded-full border border-[#d8ddd7] bg-white px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-[#60706a]">{resource.type || "resource"}</span>
                     </div>
-
-                    <p className="mt-2 text-sm text-[#66706b] leading-relaxed">
-                      {resource.description || "Helpful self-support resource for mental wellness."}
-                    </p>
-
-                    <div className="mt-3 flex items-center gap-2 flex-wrap">
-                      {resource.category && (
-                        <span className="rounded-full bg-[#eef7f3] px-2.5 py-1 text-[11px] font-medium text-[#27584d]">
-                          {resource.category}
-                        </span>
-                      )}
-                      {resource.duration && (
-                        <span className="rounded-full bg-[#f6f7f3] px-2.5 py-1 text-[11px] font-medium text-[#6a7772]">
-                          {resource.duration}
-                        </span>
-                      )}
-                    </div>
-
+                    <p className="mt-2 text-sm text-[#66706b] leading-relaxed">{resource.description || "Helpful self-support resource for mental wellness."}</p>
                     <div className="mt-4">
-                      <Link
-                        to="/resources"
-                        className="inline-flex text-xs font-semibold text-[#1f4e43] hover:underline"
-                      >
-                        Explore resource →
-                      </Link>
+                      <Link to="/resources" className="inline-flex text-xs font-semibold text-[#1f4e43] hover:underline">Explore resource →</Link>
                     </div>
                   </div>
                 ))
@@ -815,84 +757,57 @@ export default function UserDashboard() {
                 <div className="md:col-span-2 xl:col-span-3 rounded-2xl border border-dashed border-[#d6dbd2] bg-[#fbfcfa] px-6 py-10 text-center">
                   <div className="text-4xl mb-3">📚</div>
                   <h4 className="text-lg font-bold text-[#1f4e43]">No resources available yet</h4>
-                  <p className="mt-2 text-sm text-[#66706b]">
-                    Add some mental health resources in the database and they will appear here.
-                  </p>
                 </div>
               )}
             </div>
           </div>
         </section>
 
+        {/* Quick Actions */}
         <section className="mb-10">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-lg font-bold text-[#1f4e43]">Quick Actions</h3>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-            {[...quickActions, chatAction].map((a) =>
+            {[...quickActions, sessionAction].map((a) =>
               a.locked ? (
-                <div
-                  key={a.title}
-                  className="bg-white rounded-3xl px-5 py-6 border border-[#e7e5de] shadow-sm opacity-80 cursor-not-allowed"
-                  title={a.desc}
-                >
+                <div key={a.title} className="bg-white rounded-3xl px-5 py-6 border border-[#e7e5de] shadow-sm opacity-80 cursor-not-allowed" title={a.desc}>
                   <div className="w-12 h-12 rounded-2xl bg-[#f0f1ec] flex items-center justify-center text-2xl">{a.icon}</div>
                   <p className="mt-4 text-sm font-semibold text-[#1c2522] flex items-center gap-2">{a.title}</p>
                   <p className="text-xs text-[#66706b] mt-1.5">{a.desc}</p>
-                  <div className="mt-3 inline-flex text-[10px] font-semibold px-2.5 py-1 rounded-full bg-[#eff1ec] text-gray-600">
-                    🔒 Locked
-                  </div>
+                  <div className="mt-3 inline-flex text-[10px] font-semibold px-2.5 py-1 rounded-full bg-[#eff1ec] text-gray-600">🔒 Locked</div>
                 </div>
               ) : (
-                <Link
-                  key={a.title}
-                  to={a.to}
-                  className="group bg-white rounded-3xl px-5 py-6 border border-[#e7e5de] shadow-sm hover:shadow-md hover:border-[#c8d8d2] transition"
-                >
-                  <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-[#e3f3e6] to-[#d5e8e4] flex items-center justify-center text-2xl transition group-hover:scale-110">
-                    {a.icon}
-                  </div>
+                <Link key={a.title} to={a.to} className="group bg-white rounded-3xl px-5 py-6 border border-[#e7e5de] shadow-sm hover:shadow-md hover:border-[#c8d8d2] transition">
+                  <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-[#e3f3e6] to-[#d5e8e4] flex items-center justify-center text-2xl transition group-hover:scale-110">{a.icon}</div>
                   <p className="mt-4 text-sm font-semibold text-[#1c2522] transition group-hover:text-[#1f4e43]">{a.title}</p>
                   <p className="text-xs text-[#66706b] mt-1.5">{a.desc}</p>
-                  <div className="mt-4 inline-flex text-[10px] font-bold text-[#1f4e43] tracking-wide">
-                    Explore <span className="ml-1 transition group-hover:translate-x-0.5">→</span>
-                  </div>
+                  <div className="mt-4 inline-flex text-[10px] font-bold text-[#1f4e43] tracking-wide">Explore <span className="ml-1 transition group-hover:translate-x-0.5">→</span></div>
                 </Link>
               )
             )}
           </div>
         </section>
 
+        {/* Mood this week */}
         {moodItems.length > 0 && (
           <section className="mb-10">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-bold text-[#1f4e43]">Your mood this week</h3>
-              <Link
-                to="/users/mood-check"
-                className="text-sm font-semibold text-[#1f4e43] rounded-2xl px-3 py-1.5 hover:bg-white/70 transition"
-              >
-                View all →
-              </Link>
+              <Link to="/users/mood-check" className="text-sm font-semibold text-[#1f4e43] rounded-2xl px-3 py-1.5 hover:bg-white/70 transition">View all →</Link>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
               {moodItems.slice(0, 6).map((mood, idx) => (
-                <div
-                  key={idx}
-                  className="bg-white rounded-3xl p-5 border border-[#e7e5de] shadow-sm hover:shadow-md transition"
-                >
+                <div key={idx} className="bg-white rounded-3xl p-5 border border-[#e7e5de] shadow-sm hover:shadow-md transition">
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <p className="text-[11px] text-[#8f9a95] uppercase tracking-wider font-semibold">
-                        {new Date(mood.created_at).toLocaleDateString()}
-                      </p>
+                      <p className="text-[11px] text-[#8f9a95] uppercase tracking-wider font-semibold">{new Date(mood.created_at).toLocaleDateString()}</p>
                       <p className="mt-2 text-2xl font-bold text-[#1f4e43] leading-tight">{mood.mood}</p>
                     </div>
                     <span className="text-4xl opacity-80">{getMoodEmoji(mood.mood)}</span>
                   </div>
                   {mood.notes && (
-                    <p className="mt-4 text-xs text-[#66706b] leading-relaxed rounded-2xl bg-[#f8faf7] border border-[#edf0e8] px-3 py-2.5 line-clamp-2 italic">
-                      &quot;{mood.notes}&quot;
-                    </p>
+                    <p className="mt-4 text-xs text-[#66706b] leading-relaxed rounded-2xl bg-[#f8faf7] border border-[#edf0e8] px-3 py-2.5 line-clamp-2 italic">&quot;{mood.notes}&quot;</p>
                   )}
                 </div>
               ))}

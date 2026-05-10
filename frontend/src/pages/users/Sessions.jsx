@@ -12,6 +12,10 @@ export default function Sessions() {
   const [activeTab, setActiveTab] = useState("upcoming");
   const [now, setNow] = useState(new Date());
 
+  // Track which sessions are loading their video room
+  const [videoLoading, setVideoLoading] = useState({});
+  const [videoError, setVideoError] = useState({});
+
   const user = useMemo(() => {
     try {
       return JSON.parse(localStorage.getItem("user_data")) || {};
@@ -31,26 +35,14 @@ export default function Sessions() {
   };
 
   const pad2 = (value) => String(value).padStart(2, "0");
-
   const isValidDate = (d) => d instanceof Date && !Number.isNaN(d.getTime());
 
   const buildLocalDateTime = (dateStr, timeStr) => {
     if (!dateStr || !timeStr) return null;
-
     const safeTime = String(timeStr).slice(0, 5);
     const [year, month, day] = String(dateStr).split("-").map(Number);
     const [hour, minute] = safeTime.split(":").map(Number);
-
-    if (
-      !year ||
-      !month ||
-      !day ||
-      Number.isNaN(hour) ||
-      Number.isNaN(minute)
-    ) {
-      return null;
-    }
-
+    if (!year || !month || !day || Number.isNaN(hour) || Number.isNaN(minute)) return null;
     const dt = new Date(year, month - 1, day, hour, minute, 0, 0);
     return isValidDate(dt) ? dt : null;
   };
@@ -58,66 +50,61 @@ export default function Sessions() {
   const normalizeDateOnly = (value) => {
     if (!value) return null;
     const str = String(value).trim();
-
     if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
-
     const d = new Date(str);
     if (!isValidDate(d)) return null;
-
     return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
   };
 
   const normalizeTimeOnly = (value) => {
     if (!value) return null;
     const str = String(value).trim();
-
-    if (/^\d{2}:\d{2}(:\d{2})?$/.test(str)) {
-      return str.slice(0, 5);
-    }
-
+    if (/^\d{2}:\d{2}(:\d{2})?$/.test(str)) return str.slice(0, 5);
     const d = new Date(str);
     if (!isValidDate(d)) return null;
-
     return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
   };
 
   const formatDisplayDate = (dateStr) => {
     if (!dateStr) return "Not set";
-
     const [year, month, day] = String(dateStr).split("-").map(Number);
     const d = new Date(year, month - 1, day);
-
     if (!isValidDate(d)) return dateStr;
-
     return d.toLocaleDateString("en-CA");
   };
 
   const formatDisplayTime = (timeStr) => {
     if (!timeStr) return "Not set";
-
     const [hourRaw, minuteRaw] = String(timeStr).slice(0, 5).split(":");
     let hour = Number(hourRaw);
     const minute = minuteRaw || "00";
-
     if (Number.isNaN(hour)) return timeStr;
-
     const suffix = hour >= 12 ? "PM" : "AM";
     hour = hour % 12 || 12;
-
     return `${hour}:${minute} ${suffix}`;
   };
 
   const normalizeSession = (item) => {
     if (!item) return null;
 
+    const rawDateTime = item.date_time || item.dateTime || null;
+    let extractedDate = null;
+    let extractedTime = null;
+
+    if (rawDateTime) {
+      const dt = new Date(String(rawDateTime).replace(" ", "T"));
+      if (isValidDate(dt)) {
+        extractedDate = `${dt.getFullYear()}-${pad2(dt.getMonth() + 1)}-${pad2(dt.getDate())}`;
+        extractedTime = `${pad2(dt.getHours())}:${pad2(dt.getMinutes())}`;
+      }
+    }
+
     const normalizedDate = normalizeDateOnly(
-      item.date || item.appointment_date || item.session_date || null
+      item.date || item.appointment_date || item.session_date || extractedDate || null
     );
-
     const normalizedTime = normalizeTimeOnly(
-      item.time || item.appointment_time || item.session_time || null
+      item.time || item.appointment_time || item.session_time || extractedTime || null
     );
-
     const localStart = buildLocalDateTime(normalizedDate, normalizedTime);
 
     return {
@@ -136,6 +123,7 @@ export default function Sessions() {
       status: normalizeStatus(item.status),
       payment_status: String(item.payment_status || "paid").toLowerCase(),
       meeting_link: item.meeting_link || item.meet_link || null,
+      daily_room_url: item.daily_room_url || null,
       localStart,
       raw: item,
     };
@@ -153,24 +141,19 @@ export default function Sessions() {
     const start = getSessionStart(session);
     const end = getSessionEnd(session);
     const status = normalizeStatus(session?.status);
-
     if (status === "cancelled") return "past";
-
     if (start && end) {
       if (now < start) return "upcoming";
       if (now >= start && now <= end) return "live";
       if (now > end) return "past";
     }
-
     if (status === "completed") return "past";
     if (status === "pending" || status === "confirmed") return "upcoming";
-
     return "upcoming";
   };
 
   const loadSessions = async () => {
     setLoading(true);
-
     try {
       const res = await api.get("/user/sessions");
       const rawItems =
@@ -178,16 +161,14 @@ export default function Sessions() {
         res.data?.sessions ||
         res.data?.data ||
         (Array.isArray(res.data) ? res.data : []);
-
       const normalized = (rawItems || [])
         .map(normalizeSession)
         .filter(Boolean)
         .sort((a, b) => {
           const aStart = getSessionStart(a);
           const bStart = getSessionStart(b);
-          return (aStart?.getTime() || 0) - (bStart?.getTime() || 0);
+          return (bStart?.getTime() || 0) - (aStart?.getTime() || 0);
         });
-
       setSessions(normalized);
     } catch (e) {
       console.log("Sessions fetch failed:", e?.response?.status, e?.response?.data || e.message);
@@ -202,12 +183,15 @@ export default function Sessions() {
   }, []);
 
   useEffect(() => {
-    const timer = setInterval(() => {
-      setNow(new Date());
-    }, 30000);
-
+    const timer = setInterval(() => { setNow(new Date()); }, 30000);
     return () => clearInterval(timer);
   }, []);
+
+  // ── Join Video handler ──
+  // Creates the room if it doesn't exist yet, then navigates to the video page
+  const handleJoinVideo = (session) => {
+  navigate(`/users/video-room/${session.id}`);
+};
 
   const upcomingSessions = sessions.filter((s) => {
     const bucket = getSessionBucket(s);
@@ -215,7 +199,6 @@ export default function Sessions() {
   });
 
   const pastSessions = sessions.filter((s) => getSessionBucket(s) === "past");
-
   const displaySessions = activeTab === "upcoming" ? upcomingSessions : pastSessions;
 
   const handleLogout = () => {
@@ -225,12 +208,12 @@ export default function Sessions() {
   };
 
   const navItems = [
-    { label: "Dashboard", to: "/users/dashboard", icon: "🏠" },
-    { label: "Search Counselor", to: "/search-doctor", icon: "🧑‍⚕️" },
-    { label: "Sessions", to: "/sessions", icon: "📅" },
-    { label: "Resources", to: "/resources", icon: "📚" },
-    { label: "Payments", to: "/payments", icon: "💳" },
-    { label: "Settings", to: "/settings", icon: "⚙️" },
+    { label: "Dashboard",        to: "/users/dashboard", icon: "🏠" },
+    { label: "Search Counselor", to: "/search-doctor",   icon: "🧑‍⚕️" },
+    { label: "Sessions",         to: "/sessions",        icon: "📅" },
+    { label: "Resources",        to: "/resources",       icon: "📚" },
+    { label: "Payments",         to: "/payments",        icon: "💳" },
+    { label: "Settings",         to: "/settings",        icon: "⚙️" },
   ];
 
   const isActive = (to) => location.pathname === to;
@@ -238,17 +221,16 @@ export default function Sessions() {
   const badgeClass = (status) => {
     const s = normalizeStatus(status);
     const base = "text-[11px] rounded-full px-3 py-1 border whitespace-nowrap capitalize";
-
     if (s === "confirmed") return `${base} bg-emerald-50 border-emerald-200 text-emerald-700`;
-    if (s === "pending") return `${base} bg-amber-50 border-amber-200 text-amber-700`;
+    if (s === "pending")   return `${base} bg-amber-50 border-amber-200 text-amber-700`;
     if (s === "completed") return `${base} bg-green-50 border-green-200 text-green-700`;
     if (s === "cancelled") return `${base} bg-gray-50 border-gray-200 text-gray-700`;
-
     return `${base} bg-[#f9fafb] border-[#e5e7eb] text-[#374151]`;
   };
 
   return (
     <div className="min-h-screen bg-[#f8f6f0] flex">
+      {/* ── Mobile top bar ── */}
       <div className="md:hidden fixed top-0 left-0 right-0 z-40 border-b border-[#e6e5df] bg-white/90 backdrop-blur-xl">
         <div className="px-4 py-3.5 flex items-center justify-between gap-3">
           <button
@@ -269,6 +251,7 @@ export default function Sessions() {
         </div>
       </div>
 
+      {/* ── Mobile drawer ── */}
       {open && (
         <div className="md:hidden fixed inset-0 z-50">
           <div className="absolute inset-0 bg-[#1f4e43]/35 backdrop-blur-[1px]" onClick={() => setOpen(false)} />
@@ -282,12 +265,10 @@ export default function Sessions() {
                 ✕
               </button>
             </div>
-
             <div className="mt-6 rounded-3xl border border-white/20 bg-white/10 p-5 backdrop-blur">
               <p className="text-sm font-semibold text-white">{userName}</p>
               <p className="mt-1 text-xs text-[#d6ebe2]">{userEmail}</p>
             </div>
-
             <nav className="mt-7 space-y-2 text-sm">
               {navItems.map((item) => (
                 <Link
@@ -305,7 +286,6 @@ export default function Sessions() {
                 </Link>
               ))}
             </nav>
-
             <button
               onClick={handleLogout}
               className="mt-8 inline-flex rounded-2xl border border-white/20 bg-white/10 px-4 py-2 text-xs font-semibold text-[#e4efe9]"
@@ -316,6 +296,7 @@ export default function Sessions() {
         </div>
       )}
 
+      {/* ── Desktop sidebar ── */}
       <aside className="w-80 hidden md:flex bg-gradient-to-b from-[#255b4e] via-[#2d6154] to-[#466f64] text-white px-7 py-8 flex-col justify-between">
         <div>
           <div className="mb-10 rounded-3xl border border-white/15 bg-white/5 px-5 py-4 backdrop-blur">
@@ -336,7 +317,6 @@ export default function Sessions() {
                 <p className="text-xs text-[#d6ebe2] truncate">{userEmail}</p>
               </div>
             </div>
-
             <Link
               to="/users/appointments/book"
               className="mt-4 inline-flex w-full items-center justify-center rounded-2xl bg-white text-[#1f4e43] text-xs font-semibold px-4 py-2.5 shadow-[0_6px_20px_rgba(16,30,26,0.2)] transition hover:-translate-y-[1px] hover:shadow-[0_10px_24px_rgba(16,30,26,0.24)]"
@@ -371,6 +351,7 @@ export default function Sessions() {
         </button>
       </aside>
 
+      {/* ── Main content ── */}
       <main className="flex-1 px-4 md:px-10 xl:px-14 py-6 md:py-10 pt-24 md:pt-10 bg-[radial-gradient(circle_at_top_right,_#ffffff_0%,_#f8f6f0_45%,_#f3f0eb_100%)]">
         <div className="mb-8 flex flex-col md:flex-row md:items-end md:justify-between gap-4">
           <div>
@@ -381,7 +362,6 @@ export default function Sessions() {
               View your upcoming and past counseling sessions
             </p>
           </div>
-
           <Link
             to="/users/appointments/book"
             className="px-5 py-2.5 bg-gradient-to-r from-[#1f4e43] to-[#2a6b5e] text-white rounded-2xl text-sm font-semibold hover:shadow-lg hover:-translate-y-0.5 transition shadow-md w-fit"
@@ -390,23 +370,23 @@ export default function Sessions() {
           </Link>
         </div>
 
+        {/* ── Stats ── */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
           <div className="bg-white rounded-3xl p-5 border border-[#e7e5de] shadow-sm">
             <p className="text-xs uppercase tracking-wider text-[#83918b] font-semibold">Total Sessions</p>
             <p className="mt-2 text-2xl font-bold text-[#1f4e43]">{sessions.length}</p>
           </div>
-
           <div className="bg-white rounded-3xl p-5 border border-[#e7e5de] shadow-sm">
             <p className="text-xs uppercase tracking-wider text-[#83918b] font-semibold">Upcoming</p>
             <p className="mt-2 text-2xl font-bold text-[#1f4e43]">{upcomingSessions.length}</p>
           </div>
-
           <div className="bg-white rounded-3xl p-5 border border-[#e7e5de] shadow-sm">
             <p className="text-xs uppercase tracking-wider text-[#83918b] font-semibold">Past</p>
             <p className="mt-2 text-2xl font-bold text-[#1f4e43]">{pastSessions.length}</p>
           </div>
         </div>
 
+        {/* ── Tabs ── */}
         <div className="flex gap-3 mb-6">
           <button
             onClick={() => setActiveTab("upcoming")}
@@ -430,6 +410,7 @@ export default function Sessions() {
           </button>
         </div>
 
+        {/* ── Sessions list ── */}
         <div className="bg-white rounded-3xl border border-[#e7e5de] shadow-sm p-5 md:p-6">
           {loading ? (
             <p className="text-[#666]">Loading sessions...</p>
@@ -450,11 +431,16 @@ export default function Sessions() {
               {displaySessions.map((session) => {
                 const bucket = getSessionBucket(session);
                 const liveNow = bucket === "live";
+                const isPast = bucket === "past";
+                const isVideo = session.type === "video";
 
-                const canStartChat =
+                const canJoin =
                   normalizeStatus(session.status) === "confirmed" &&
                   (session.payment_status || "").toLowerCase() === "paid" &&
                   liveNow;
+
+                const isVideoJoining = videoLoading[session.id] || false;
+                const videoErr = videoError[session.id] || "";
 
                 return (
                   <div
@@ -477,7 +463,9 @@ export default function Sessions() {
                           </div>
                           <div>
                             <p className="text-[#8f9a95] text-xs uppercase tracking-wider font-semibold">Type</p>
-                            <p className="font-semibold text-[#111827] mt-1 capitalize">{session.type}</p>
+                            <p className="font-semibold text-[#111827] mt-1 capitalize flex items-center gap-1">
+                              {isVideo ? "🎥" : "💬"} {session.type}
+                            </p>
                           </div>
                           <div>
                             <p className="text-[#8f9a95] text-xs uppercase tracking-wider font-semibold">Payment</p>
@@ -495,23 +483,62 @@ export default function Sessions() {
                           </span>
                         )}
 
-                        {canStartChat ? (
-                          <Link
-                            to={`/chat/${session.id}`}
-                            className="mt-2 inline-flex items-center justify-center rounded-2xl bg-[#1f4e43] px-4 py-2 text-sm font-semibold text-white shadow-sm hover:opacity-95"
-                          >
-                            Join chat
-                          </Link>
+                        {/* ── Chat or Video join button ── */}
+                        {isVideo ? (
+                          canJoin ? (
+                            <button
+                              onClick={() => handleJoinVideo(session)}
+                              disabled={isVideoJoining}
+                              className={`mt-2 inline-flex items-center justify-center gap-2 rounded-2xl px-4 py-2 text-sm font-semibold text-white shadow-sm transition ${
+                                isVideoJoining
+                                  ? "bg-gray-400 cursor-not-allowed"
+                                  : "bg-[#1f4e43] hover:opacity-95"
+                              }`}
+                            >
+                              {isVideoJoining ? (
+                                <>
+                                  <span className="inline-block w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                  Starting...
+                                </>
+                              ) : (
+                                <>🎥 Join Video</>
+                              )}
+                            </button>
+                          ) : (
+                            <button
+                              disabled
+                              className="mt-2 inline-flex items-center justify-center rounded-2xl bg-gray-200 px-4 py-2 text-sm font-semibold text-gray-500 cursor-not-allowed"
+                            >
+                              🎥 Video unavailable
+                            </button>
+                          )
                         ) : (
-                          <button
-                            disabled
-                            className="mt-2 inline-flex items-center justify-center rounded-2xl bg-gray-200 px-4 py-2 text-sm font-semibold text-gray-500 cursor-not-allowed"
-                          >
-                            Chat unavailable
-                          </button>
+                          canJoin ? (
+                            <Link
+                              to={`/users/chat/${session.id}`}
+                              className="mt-2 inline-flex items-center justify-center rounded-2xl bg-[#1f4e43] px-4 py-2 text-sm font-semibold text-white shadow-sm hover:opacity-95"
+                            >
+                              💬 Join chat
+                            </Link>
+                          ) : (
+                            <button
+                              disabled
+                              className="mt-2 inline-flex items-center justify-center rounded-2xl bg-gray-200 px-4 py-2 text-sm font-semibold text-gray-500 cursor-not-allowed"
+                            >
+                              💬 Chat unavailable
+                            </button>
+                          )
+                        )}
+
+                        {/* ── Video error message ── */}
+                        {videoErr && (
+                          <p className="text-xs text-red-500 mt-1 max-w-[200px] text-right">{videoErr}</p>
                         )}
                       </div>
                     </div>
+
+                    {/* ── Session Notes (past sessions only) ── */}
+                    {isPast && <SessionNotes sessionId={session.id} />}
                   </div>
                 );
               })}
@@ -519,6 +546,50 @@ export default function Sessions() {
           )}
         </div>
       </main>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
+// Session Notes Component
+// Shown on past sessions — fetches notes on click
+// ─────────────────────────────────────────────
+function SessionNotes({ sessionId }) {
+  const [notes, setNotes] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [open, setOpen] = useState(false);
+
+  const fetchNotes = async () => {
+    if (notes !== null) {
+      setOpen((v) => !v);
+      return;
+    }
+    try {
+      setLoading(true);
+      const res = await api.get(`/counselor-notes/${sessionId}`);
+      setNotes(res.data?.note?.notes || "");
+      setOpen(true);
+    } catch {
+      setNotes("");
+      setOpen(true);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="mt-4 pt-4 border-t border-[#e7e5de]">
+      <button
+        onClick={fetchNotes}
+        className="text-xs text-[#1f4e43] font-semibold underline underline-offset-2 hover:opacity-70 transition"
+      >
+        {loading ? "Loading..." : open ? "📋 Hide session notes ▲" : "📋 View session notes ▼"}
+      </button>
+      {open && (
+        <div className="mt-3 rounded-2xl border border-[#bbf7d0] bg-[#f0fdf4] px-4 py-3 text-sm text-[#166534] whitespace-pre-wrap">
+          {notes ? notes : "No notes were added for this session."}
+        </div>
+      )}
     </div>
   );
 }

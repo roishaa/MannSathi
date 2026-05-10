@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 class GuestBooking extends Model
 {
     protected $fillable = [
+        'appointment_id',
         'counselor_id',
         'guest_name',
         'guest_email',

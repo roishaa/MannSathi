@@ -76,10 +76,10 @@ class ChatController extends Controller
         $senderType = null;
         $senderId = $authUser->id;
 
-        // 🔥 Determine role from appointment ownership, not from guard
-        if ((int) $appointment->counselor_id === (int) $authUser->id) {
+        // Determine role from model type + appointment ownership
+        if ($authUser instanceof Counselor && (int) $appointment->counselor_id === (int) $authUser->id) {
             $senderType = 'counselor';
-        } elseif ((int) $appointment->user_id === (int) $authUser->id) {
+        } elseif ($authUser instanceof User && (int) $appointment->user_id === (int) $authUser->id) {
             $senderType = 'user';
         }
 
@@ -121,11 +121,11 @@ class ChatController extends Controller
             ], 401);
         }
 
-        if ((int) $appointment->counselor_id === (int) $authUser->id) {
+        if ($authUser instanceof Counselor && (int) $appointment->counselor_id === (int) $authUser->id) {
             return true;
         }
 
-        if ((int) $appointment->user_id === (int) $authUser->id) {
+        if ($authUser instanceof User && (int) $appointment->user_id === (int) $authUser->id) {
             return true;
         }
 

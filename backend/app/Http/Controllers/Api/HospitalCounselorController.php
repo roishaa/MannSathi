@@ -31,4 +31,27 @@ class HospitalCounselorController extends Controller
     $c->save();
     return response()->json(['message' => 'Rejected', 'id'=>$c->id, 'status'=>$c->status]);
   }
+
+  public function destroy($id)
+{
+    try {
+        $counselor = Counselor::findOrFail($id);
+        $counselor->delete();
+
+        return response()->json([
+            'message' => 'Counselor deleted successfully.'
+        ], 200);
+
+    } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+        return response()->json([
+            'message' => 'Counselor not found.'
+        ], 404);
+
+    } catch (\Exception $e) {
+        return response()->json([
+            'message' => 'Failed to delete counselor.',
+            'error'   => $e->getMessage()
+        ], 500);
+    }
+}
 }

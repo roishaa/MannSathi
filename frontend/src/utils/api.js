@@ -31,9 +31,10 @@ function getTokenByRequest(config) {
     return adminToken;
   }
 
-  // shared appointment routes (user + counselor)
+  // shared appointment routes (user + counselor) — prefer counselor token so
+  // ChatPanel requests are never sent with a stale user token
   if (url.startsWith("/appointments")) {
-    return userToken || counselorToken;
+    return counselorToken || userToken;
   }
 
   // user routes
@@ -51,12 +52,14 @@ function getTokenByRequest(config) {
 
 api.interceptors.request.use(
   (config) => {
-    const token = getTokenByRequest(config);
+    // If the caller already set an Authorization header explicitly, respect it
+    if (config.headers?.Authorization) {
+      return config;
+    }
 
+    const token = getTokenByRequest(config);
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
-    } else if (config.headers?.Authorization) {
-      delete config.headers.Authorization;
     }
 
     return config;

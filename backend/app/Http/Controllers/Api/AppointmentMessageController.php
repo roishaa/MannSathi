@@ -217,7 +217,11 @@ class AppointmentMessageController extends Controller
             ], 401);
         }
 
-        if ($appointment->transaction_ref !== $token) {
+        $guestBooking = \App\Models\GuestBooking::where('guest_token', $token)
+            ->where('appointment_id', $appointment->id)
+            ->first();
+
+        if (!$guestBooking) {
             return response()->json([
                 'success' => false,
                 'message' => 'Invalid guest token.',

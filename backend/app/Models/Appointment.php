@@ -44,4 +44,9 @@ class Appointment extends Model
     {
         return $this->hasMany(Message::class);
     }
+
+    public function counselorNote()
+{
+    return $this->hasOne(CounselorNote::class);
+}
 }

@@ -158,7 +158,7 @@ export default function SearchDoctor() {
         </div>
 
         <Link
-          to="/users/appointments/book"
+          to="/book-appointment"
           className="inline-flex items-center justify-center rounded-2xl bg-gradient-to-r from-[#1f4e43] to-[#2a6b5e] px-5 py-3 text-sm font-semibold text-white shadow-md transition hover:-translate-y-0.5 hover:shadow-lg"
         >
           ➕ Book session

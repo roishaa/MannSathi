@@ -322,7 +322,7 @@ class EsewaController extends Controller
                 'counselor_id' => $guestBooking->counselor_id,
                 'date_time' => $dateTime,
                 'type' => $guestBooking->session_type,
-                'name' => $guestBooking->guest_name,
+                'name' => $guestBooking->anonymous_name ?? 'Anonymous',
                 'nickname' => null,
                 'email' => $guestBooking->guest_email,
                 'phone' => $guestBooking->guest_phone,
@@ -337,10 +337,11 @@ class EsewaController extends Controller
                 'payment_status' => 'paid',
                 'booking_status' => 'confirmed',
                 'payment_reference' => $transactionUuid,
+                'appointment_id' => $appointment->id,
             ]);
 
             try {
-                $guestLink = 'http://localhost:5173/guest-session/' . $guestBooking->id . '?token=' . $guestBooking->guest_token;
+                $guestLink = 'http://localhost:5173/guest-session/' . $guestBooking->id . '?token=' . $guestBooking->guest_token . '&appointment_id=' . $appointment->id;
 
                 $bookingData = [
                     'name' => $guestBooking->guest_name ?? 'Guest',
@@ -593,7 +594,7 @@ class EsewaController extends Controller
             'counselor_id' => $guestBooking->counselor_id,
             'date_time' => $dateTime,
             'type' => $guestBooking->session_type,
-            'name' => $guestBooking->guest_name,
+            'name' => $guestBooking->anonymous_name ?? 'Anonymous',
             'nickname' => null,
             'email' => $guestBooking->guest_email,
             'phone' => $guestBooking->guest_phone,
@@ -608,10 +609,11 @@ class EsewaController extends Controller
             'payment_status' => 'paid',
             'booking_status' => 'confirmed',
             'payment_reference' => $guestBooking->transaction_uuid,
+            'appointment_id' => $appointment->id,
         ]);
 
         try {
-            $guestLink = 'http://localhost:5173/guest-session/' . $guestBooking->id . '?token=' . $guestBooking->guest_token;
+            $guestLink = 'http://localhost:5173/guest-session/' . $guestBooking->id . '?token=' . $guestBooking->guest_token . '&appointment_id=' . $appointment->id;
 
             $bookingData = [
                 'name' => $guestBooking->guest_name ?? 'Guest',

@@ -1,6 +1,39 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect, useCallback, useRef } from "react";
 import { Link } from "react-router-dom";
 import { API } from "../utils/api";
+
+// ─── Rolling slot helpers ─────────────────────────────────────────────────────
+const generateRollingSlots = () => {
+  const now = new Date();
+  const totalMins = now.getHours() * 60 + now.getMinutes();
+  const firstSlotMins = Math.ceil(totalMins / 10) * 10;
+  const endMins = 21 * 60;
+  const slots = [];
+  for (let mins = firstSlotMins; mins <= endMins; mins += 10) {
+    const h = Math.floor(mins / 60);
+    const m = mins % 60;
+    const value = `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+    const suffix = h >= 12 ? "PM" : "AM";
+    const displayH = h % 12 || 12;
+    const label = `${displayH}:${String(m).padStart(2, "0")} ${suffix}`;
+    const minsFromNow = mins - totalMins;
+    slots.push({ value, label, minsFromNow });
+  }
+  return slots;
+};
+
+const getTodayISO = () => {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+};
+
+const formatWaitTime = (minsFromNow) => {
+  if (minsFromNow <= 0) return "Now";
+  if (minsFromNow < 60) return `${minsFromNow} min${minsFromNow !== 1 ? "s" : ""}`;
+  const hrs = Math.floor(minsFromNow / 60);
+  const mins = minsFromNow % 60;
+  return mins > 0 ? `${hrs}h ${mins}m` : `${hrs} hr`;
+};
 
 function Field({ label, required, children }) {
   return (
@@ -13,74 +46,32 @@ function Field({ label, required, children }) {
   );
 }
 
-function formatDateParts(date) {
-  return {
-    dayName: date.toLocaleDateString("en-US", { weekday: "short" }),
-    date: String(date.getDate()),
-    month: date.toLocaleDateString("en-US", { month: "long" }),
-    year: String(date.getFullYear()),
-  };
-}
-
 export default function BookAppointment() {
-  const months = [
-    "January",
-    "February",
-    "March",
-    "April",
-    "May",
-    "June",
-    "July",
-    "August",
-    "September",
-    "October",
-    "November",
-    "December",
-  ];
-
-  const years = ["2024", "2025", "2026"];
-
-  const today = new Date();
-  const currentMonth = months[today.getMonth()];
-  const currentYear = String(today.getFullYear());
-  const currentDate = String(today.getDate());
-
-  const weekData = useMemo(() => {
-    const days = [];
-
-    for (let i = 0; i < 7; i++) {
-      const d = new Date(today);
-      d.setDate(today.getDate() + i);
-
-      days.push({
-        fullDate: d,
-        ...formatDateParts(d),
-      });
-    }
-
-    return days;
-  }, []);
-
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
-  const [loadingCounselors, setLoadingCounselors] = useState(false);
-  const [counselorsError, setCounselorsError] = useState("");
-  const [counselors, setCounselors] = useState([]);
   const [pageError, setPageError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
+
+  const [slots, setSlots] = useState(() => generateRollingSlots());
+  const [selectedSlot, setSelectedSlot] = useState(null);
+  const [counselors, setCounselors] = useState([]);
+  const [loadingCounselors, setLoadingCounselors] = useState(false);
+  const [counselorsError, setCounselorsError] = useState("");
+
+  const [autoFinding, setAutoFinding] = useState(false);
+  const [checkedCount, setCheckedCount] = useState(0);
+  const autoFindRef = useRef(false);
 
   const [paymentData, setPaymentData] = useState(null);
   const [guestBookingId, setGuestBookingId] = useState(null);
   const [guestTransactionUuid, setGuestTransactionUuid] = useState("");
 
+  // ── Session type state ──
+  const [sessionType, setSessionType] = useState("chat");
+
   const [formData, setFormData] = useState({
     counselor: "",
     counselorId: "",
-    counselorVerified: false,
-    month: currentMonth,
-    year: currentYear,
-    date: currentDate,
-    time: "",
     name: "",
     nickname: "",
     email: "",
@@ -88,206 +79,125 @@ export default function BookAppointment() {
     paymentMethod: "",
   });
 
-  const [selectedDayIndex, setSelectedDayIndex] = useState(0);
-  const [selectedTime, setSelectedTime] = useState("");
-
-  const timeSlots = [
-    "9:30 am - 10:20 am",
-    "10:30 am - 11:20 am",
-    "12:00 pm - 12:50 pm",
-    "1:00 pm - 1:50 pm",
-    "2:00 pm - 2:50 pm",
-    "3:00 pm - 3:50 pm",
-    "4:00 pm - 4:50 pm",
-    "5:00 pm - 5:50 pm",
-  ];
+  const [currentTime, setCurrentTime] = useState(() => {
+    const now = new Date();
+    return now.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
+  });
 
   const stepsMeta = [
-    { id: 1, label: "Date & Time" },
+    { id: 1, label: "Pick Time" },
     { id: 2, label: "Counselor" },
-    { id: 3, label: "Guest Info" },
+    { id: 3, label: "Your Info" },
     { id: 4, label: "Payment" },
   ];
 
   const stepTitle = [
-    "Choose Date and Time",
+    "Next Available Session",
     "Choose Your Counselor",
     "Guest Information",
     "Guest Payment",
   ][step - 1];
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const freshSlots = generateRollingSlots();
+      setSlots(freshSlots);
+      const now = new Date();
+      setCurrentTime(now.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true }));
+      setSelectedSlot((prev) => {
+        if (!prev) return prev;
+        const still = freshSlots.find((s) => s.value === prev.value);
+        return still || null;
+      });
+    }, 60000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const fetchCounselorsForSlot = useCallback(async (slot) => {
+    if (!slot) return [];
+    try {
+      const res = await API.get("/guest-counselors/available", {
+        params: { date: getTodayISO(), time: slot.value },
+      });
+      const list = Array.isArray(res.data) ? res.data : res.data?.items || res.data?.data || [];
+      return list.map((item) => ({
+        id: item.id,
+        name: item.name || item.full_name || "Unnamed Counselor",
+        specialization: item.specialization || "",
+        experience_years: item.experience_years || null,
+        bio: item.bio || "",
+      }));
+    } catch {
+      return [];
+    }
+  }, []);
+
+  const autoFindNextSlot = useCallback(async () => {
+    if (autoFindRef.current) return;
+    autoFindRef.current = true;
+    setAutoFinding(true);
+    setCheckedCount(0);
+    setCounselors([]);
+    setCounselorsError("");
+    setSelectedSlot(null);
+    setPageError("");
+
+    const freshSlots = generateRollingSlots();
+    for (let i = 0; i < Math.min(freshSlots.length, 6); i++) {
+      if (!autoFindRef.current) break;
+      setCheckedCount(i + 1);
+      const slot = freshSlots[i];
+      const found = await fetchCounselorsForSlot(slot);
+      if (found.length > 0) {
+        setSelectedSlot(slot);
+        setCounselors(found);
+        setAutoFinding(false);
+        autoFindRef.current = false;
+        return;
+      }
+    }
+
+    setCounselorsError("No counselors are available in the next hour. Please try again soon.");
+    setAutoFinding(false);
+    autoFindRef.current = false;
+  }, [fetchCounselorsForSlot]);
+
+  useEffect(() => {
+    autoFindNextSlot();
+    return () => { autoFindRef.current = false; };
+  }, []);
+
+  const handleSlotClick = async (slot) => {
+    autoFindRef.current = false;
+    setAutoFinding(false);
+    setSelectedSlot(slot);
+    setCounselors([]);
+    setCounselorsError("");
+    setFormData((p) => ({ ...p, counselor: "", counselorId: "" }));
+    setLoadingCounselors(true);
+    const found = await fetchCounselorsForSlot(slot);
+    setCounselors(found);
+    if (found.length === 0) setCounselorsError("No counselors available for this slot. Try another time.");
+    setLoadingCounselors(false);
+  };
 
   const handleChange = (e) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
-  const formatTimeForBackend = (slot) => {
-    if (!slot) return "";
-
-    const startPart = slot.split(" - ")[0].trim();
-    const [time, period] = startPart.split(" ");
-    let [hours, minutes] = time.split(":").map(Number);
-
-    if (period.toLowerCase() === "pm" && hours !== 12) hours += 12;
-    if (period.toLowerCase() === "am" && hours === 12) hours = 0;
-
-    return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
-  };
-
-  const formatDateForBackend = (
-    month = formData.month,
-    year = formData.year,
-    date = formData.date
-  ) => {
-    const monthIndex = months.indexOf(month) + 1;
-    return `${year}-${String(monthIndex).padStart(2, "0")}-${String(date).padStart(2, "0")}`;
-  };
-
-  const fetchAvailableCounselors = async (date, time) => {
-    try {
-      setLoadingCounselors(true);
-      setCounselorsError("");
-      setCounselors([]);
-      setPageError("");
-
-      const res = await API.get("/guest-counselors/available", {
-        params: { date, time },
-      });
-
-      const counselorList = Array.isArray(res.data)
-        ? res.data
-        : res.data?.items || res.data?.data || [];
-
-      const normalized = counselorList.map((item) => ({
-        id: item.id,
-        name: item.name || item.full_name || "Unnamed Counselor",
-        verified: true,
-      }));
-
-      setCounselors(normalized);
-
-      if (normalized.length === 0) {
-        setCounselorsError("No counselors are available for this selected time slot.");
-      }
-    } catch (err) {
-      console.error("Failed to fetch available counselors:", err);
-      setCounselors([]);
-      setCounselorsError(
-        err?.response?.data?.message ||
-          "Could not load available counselors for this time."
-      );
-    } finally {
-      setLoadingCounselors(false);
-    }
-  };
-
-  const handleDayClick = async (index) => {
-    const selected = weekData[index];
-
-    setSelectedDayIndex(index);
-    setCounselors([]);
-    setCounselorsError("");
-    setPageError("");
-    setPaymentData(null);
-    setGuestBookingId(null);
-    setGuestTransactionUuid("");
-    setSuccessMessage("");
-
-    setFormData((prev) => ({
-      ...prev,
-      date: selected.date,
-      month: selected.month,
-      year: selected.year,
-      counselor: "",
-      counselorId: "",
-      counselorVerified: false,
-    }));
-
-    if (selectedTime) {
-      const backendDate = formatDateForBackend(
-        selected.month,
-        selected.year,
-        selected.date
-      );
-      const backendTime = formatTimeForBackend(selectedTime);
-      await fetchAvailableCounselors(backendDate, backendTime);
-    }
-  };
-
-  const handleTimeClick = async (slot) => {
-    setSelectedTime(slot);
-    setCounselors([]);
-    setCounselorsError("");
-    setPageError("");
-    setPaymentData(null);
-    setGuestBookingId(null);
-    setGuestTransactionUuid("");
-    setSuccessMessage("");
-
-    setFormData((prev) => ({
-      ...prev,
-      time: slot,
-      counselor: "",
-      counselorId: "",
-      counselorVerified: false,
-    }));
-
-    const backendDate = formatDateForBackend(
-      formData.month,
-      formData.year,
-      formData.date
-    );
-    const backendTime = formatTimeForBackend(slot);
-
-    await fetchAvailableCounselors(backendDate, backendTime);
-  };
-
-  const handleMonthYearChange = async (e) => {
-    const { name, value } = e.target;
-
-    const updatedForm = {
-      ...formData,
-      [name]: value,
-      counselor: "",
-      counselorId: "",
-      counselorVerified: false,
-    };
-
-    setFormData(updatedForm);
-    setCounselors([]);
-    setCounselorsError("");
-    setPageError("");
-    setPaymentData(null);
-    setGuestBookingId(null);
-    setGuestTransactionUuid("");
-    setSuccessMessage("");
-
-    if (selectedTime) {
-      const backendDate = formatDateForBackend(
-        updatedForm.month,
-        updatedForm.year,
-        updatedForm.date
-      );
-      const backendTime = formatTimeForBackend(selectedTime);
-      await fetchAvailableCounselors(backendDate, backendTime);
-    }
-  };
-
   const canContinue = useMemo(() => {
-    if (step === 1) return !!formData.date && !!formData.time;
-    if (step === 2) {
-      return !!formData.counselor && !!formData.counselorId && !loadingCounselors;
-    }
+    if (step === 1) return !!selectedSlot && counselors.length > 0 && !autoFinding;
+    if (step === 2) return !!formData.counselor && !!formData.counselorId;
     if (step === 3) return !!formData.name && !!formData.email && !!formData.phone;
     if (step === 4) return !!formData.paymentMethod && !loading;
     return true;
-  }, [step, formData, loading, loadingCounselors]);
+  }, [step, selectedSlot, counselors, autoFinding, formData, loading]);
 
   const submitEsewaForm = (paymentUrl, formFields) => {
     const form = document.createElement("form");
     form.method = "POST";
     form.action = paymentUrl;
-
     Object.entries(formFields).forEach(([key, value]) => {
       const input = document.createElement("input");
       input.type = "hidden";
@@ -295,7 +205,6 @@ export default function BookAppointment() {
       input.value = value ?? "";
       form.appendChild(input);
     });
-
     document.body.appendChild(form);
     form.submit();
   };
@@ -305,7 +214,6 @@ export default function BookAppointment() {
       alert("Currently only eSewa is connected for guest booking.");
       return;
     }
-
     try {
       setLoading(true);
       setPageError("");
@@ -316,9 +224,9 @@ export default function BookAppointment() {
 
       const bookingPayload = {
         counselor_id: Number(formData.counselorId),
-        date: formatDateForBackend(),
-        time: formatTimeForBackend(formData.time),
-        session_type: "chat",
+        date: getTodayISO(),
+        time: selectedSlot.value,
+        session_type: sessionType, // ← dynamic now
         guest_name: formData.name,
         guest_email: formData.email,
         guest_phone: formData.phone,
@@ -328,75 +236,54 @@ export default function BookAppointment() {
 
       const bookingRes = await API.post("/guest-bookings", bookingPayload);
       const booking = bookingRes.data?.booking;
+      if (!booking?.id) throw new Error("Guest booking created but booking id missing.");
 
-      if (!booking?.id) {
-        throw new Error("Guest booking created but booking id missing.");
-      }
-
-      const paymentRes = await API.post("/esewa/guest-pay", {
-        guest_booking_id: booking.id,
-      });
-
+      const paymentRes = await API.post("/esewa/guest-pay", { guest_booking_id: booking.id });
       const { payment_url, form_fields } = paymentRes.data || {};
-
-      if (!payment_url || !form_fields) {
-        throw new Error("Invalid payment response from server.");
-      }
+      if (!payment_url || !form_fields) throw new Error("Invalid payment response from server.");
 
       setGuestBookingId(booking.id);
       setGuestTransactionUuid(form_fields.transaction_uuid || booking.transaction_uuid || "");
-      setPaymentData({
-        payment_url,
-        form_fields,
-      });
-      setSuccessMessage("Guest payment initialized. Continue to eSewa or simulate success for demo.");
+      setPaymentData({ payment_url, form_fields });
+      setSuccessMessage("Payment initialized! Continue to eSewa to complete booking.");
     } catch (err) {
-      console.error("Guest booking failed:", err);
-      const message =
-        err?.response?.data?.message ||
-        "Booking failed. Please check the slot and try again.";
-      setPageError(message);
+      setPageError(err?.response?.data?.message || "Booking failed. Please try again.");
     } finally {
       setLoading(false);
     }
   };
 
   const handleGuestSimulateSuccess = () => {
-    if (!guestBookingId) {
-      setPageError("No guest booking found. Please initialize payment first.");
-      return;
-    }
-
+    if (!guestBookingId) { setPageError("No guest booking found. Please initialize payment first."); return; }
     window.location.href = `http://127.0.0.1:8000/api/guest-simulate-success/${guestBookingId}`;
   };
 
   const handleNext = async () => {
-    if (step < 4) {
-      setStep((s) => s + 1);
-      return;
-    }
-
+    if (step < 4) { setStep((s) => s + 1); return; }
     await initializeGuestEsewaPayment();
   };
 
-  const handleBack = () => setStep((s) => Math.max(1, s - 1));
+  const handleBack = () => { setStep((s) => Math.max(1, s - 1)); setPageError(""); };
   const progressPercent = ((step - 1) / 3) * 100;
+
+  const sessionTypeLabel = sessionType === "video" ? "Video Call Session" : "Chat Session";
+  const sessionTypeIcon  = sessionType === "video" ? "🎥" : "💬";
 
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_#f4fbf6,_#f8f8f4_45%,_#ffffff_75%)] pt-28">
+
       {pageError && (
         <div className="mx-auto max-w-6xl px-6 mb-4">
-          <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-            {pageError}
+          <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 flex items-center justify-between">
+            <span>{pageError}</span>
+            <button onClick={() => setPageError("")} className="text-red-400 hover:text-red-600 ml-4">✕</button>
           </div>
         </div>
       )}
 
       {successMessage && (
         <div className="mx-auto max-w-6xl px-6 mb-4">
-          <div className="rounded-2xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
-            {successMessage}
-          </div>
+          <div className="rounded-2xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">{successMessage}</div>
         </div>
       )}
 
@@ -405,29 +292,14 @@ export default function BookAppointment() {
           <Link to="/" className="relative block select-none">
             <div className="w-56 h-16 bg-[#215c4c] [clip-path:polygon(0_0,100%_0,100%_60%,50%_100%,0_60%)]" />
             <div className="absolute inset-0 flex items-center justify-center">
-              <span className="text-white font-semibold text-xl font-serif tracking-wide">
-                MannSathi
-              </span>
+              <span className="text-white font-semibold text-xl font-serif tracking-wide">MannSathi</span>
             </div>
           </Link>
-
           <nav className="flex items-center gap-8 text-[15px] font-medium text-neutral-800">
-            <Link to="/" className="hover:text-[#215c4c] transition">
-              Home
-            </Link>
-            <Link to="/about" className="hover:text-[#215c4c] transition">
-              About Us
-            </Link>
-            <Link to="/services" className="hover:text-[#215c4c] transition">
-              Services
-            </Link>
-            <Link
-              to="/signup"
-              className="inline-flex items-center rounded-full border border-[#89ad8f] bg-[#e3f3e6]
-                         px-7 py-2.5 text-[15px] font-semibold text-[#305b39]
-                         shadow-[0_4px_0_0_#89ad8f] hover:translate-y-[1px]
-                         hover:shadow-[0_3px_0_0_#89ad8f] transition"
-            >
+            <Link to="/" className="hover:text-[#215c4c] transition">Home</Link>
+            <Link to="/about" className="hover:text-[#215c4c] transition">About Us</Link>
+            <Link to="/services" className="hover:text-[#215c4c] transition">Services</Link>
+            <Link to="/signup" className="inline-flex items-center rounded-full border border-[#89ad8f] bg-[#e3f3e6] px-7 py-2.5 text-[15px] font-semibold text-[#305b39] shadow-[0_4px_0_0_#89ad8f] hover:translate-y-[1px] hover:shadow-[0_3px_0_0_#89ad8f] transition">
               Signup
             </Link>
           </nav>
@@ -435,564 +307,337 @@ export default function BookAppointment() {
       </header>
 
       <main className="mx-auto max-w-6xl px-6 pb-16">
+        {/* Hero */}
         <section className="mt-6 rounded-3xl border border-[#d7e7db] bg-[linear-gradient(140deg,_#f6fbf7_0%,_#ffffff_55%,_#f2f8f3_100%)] px-6 py-7 sm:px-8 sm:py-9 shadow-[0_14px_50px_rgba(22,67,54,0.08)]">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div className="max-w-2xl">
-              <span className="inline-flex items-center rounded-full border border-[#a8c7b0] bg-[#e8f4eb] px-3 py-1 text-xs font-semibold uppercase tracking-wide text-[#2a5f4f]">
-                No account required
+              <span className="inline-flex items-center gap-2 rounded-full border border-[#a8c7b0] bg-[#e8f4eb] px-3 py-1 text-xs font-semibold uppercase tracking-wide text-[#2a5f4f]">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                Instant Booking — No account required
               </span>
-              <h1 className="mt-4 text-3xl sm:text-4xl font-semibold text-[#153f34] leading-tight">
-                Book as a Guest
-              </h1>
+              <h1 className="mt-4 text-3xl sm:text-4xl font-semibold text-[#153f34] leading-tight">Talk to a Counselor Now</h1>
               <p className="mt-3 text-sm sm:text-base text-[#47665c] leading-relaxed">
-                Schedule a counseling session without creating an account. Choose
-                a time first, then select from counselors available in that slot,
-                share your details, and complete secure eSewa payment.
+                We find the next available counselor automatically. Pick your nearest time slot, choose a counselor, and start your session today.
               </p>
             </div>
-
-            <div className="w-full sm:w-auto rounded-2xl border border-[#dbeadf] bg-white/80 px-4 py-3 text-sm text-[#35584c]">
-              <div className="font-semibold text-[#21493d]">
-                Guest Session Booking
-              </div>
-              <div className="mt-1 text-xs sm:text-sm">
-                Fast public booking flow for first-time visitors.
+            <div className="w-full sm:w-auto rounded-2xl border border-[#dbeadf] bg-white/80 px-5 py-4 text-center">
+              <div className="text-xs font-semibold uppercase tracking-wide text-[#5b7c71]">Current Time</div>
+              <div className="mt-1 text-2xl font-bold text-[#1e473b]">{currentTime}</div>
+              <div className="mt-1 text-xs text-[#6b8c7e]">
+                {new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}
               </div>
             </div>
           </div>
-
           <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-            <div className="rounded-2xl border border-[#deece2] bg-white px-4 py-3">
-              <div className="text-xs font-semibold uppercase tracking-wide text-[#5b7c71]">
-                Step 1
+            {["See next available slot", "Choose counselor", "Enter your details", "Pay & start session"].map((text, i) => (
+              <div key={i} className="rounded-2xl border border-[#deece2] bg-white px-4 py-3">
+                <div className="text-xs font-semibold uppercase tracking-wide text-[#5b7c71]">Step {i + 1}</div>
+                <div className="mt-1 text-sm font-medium text-[#1e473b]">{text}</div>
               </div>
-              <div className="mt-1 text-sm font-medium text-[#1e473b]">
-                Select date and time
-              </div>
-            </div>
-            <div className="rounded-2xl border border-[#deece2] bg-white px-4 py-3">
-              <div className="text-xs font-semibold uppercase tracking-wide text-[#5b7c71]">
-                Step 2
-              </div>
-              <div className="mt-1 text-sm font-medium text-[#1e473b]">
-                Choose counselor
-              </div>
-            </div>
-            <div className="rounded-2xl border border-[#deece2] bg-white px-4 py-3">
-              <div className="text-xs font-semibold uppercase tracking-wide text-[#5b7c71]">
-                Step 3
-              </div>
-              <div className="mt-1 text-sm font-medium text-[#1e473b]">
-                Enter guest details
-              </div>
-            </div>
-            <div className="rounded-2xl border border-[#deece2] bg-white px-4 py-3">
-              <div className="text-xs font-semibold uppercase tracking-wide text-[#5b7c71]">
-                Step 4
-              </div>
-              <div className="mt-1 text-sm font-medium text-[#1e473b]">
-                Pay securely with eSewa
-              </div>
-            </div>
+            ))}
           </div>
         </section>
 
-        <div className="mt-8 text-center">
-          <h2 className="text-sm font-semibold tracking-[0.2em] uppercase text-[#2e6151]">
-            Complete Guest Booking
-          </h2>
-          <div className="mt-2 h-[2px] w-28 bg-[#215c4c]/25 mx-auto rounded-full" />
-        </div>
-
+        {/* Step indicator */}
         <div className="mt-8">
           <div className="flex flex-wrap sm:flex-nowrap items-center justify-between gap-3 max-w-4xl mx-auto rounded-3xl border border-[#dce9df] bg-white/90 px-4 py-4 shadow-[0_12px_32px_rgba(36,69,56,0.08)]">
             {stepsMeta.map((s) => {
               const active = step === s.id;
               const done = step > s.id;
-
               return (
-                <div key={s.id} className="flex items-center gap-3 min-w-[140px]">
-                  <div
-                    className={`w-10 h-10 rounded-2xl flex items-center justify-center border text-xs font-semibold ${
-                      active
-                        ? "bg-[#215c4c] text-white border-[#215c4c] shadow-md"
-                        : done
-                        ? "bg-[#e3f3e6] text-[#215c4c] border-[#89ad8f]"
-                        : "bg-white text-neutral-500 border-[#e5e5e5]"
-                    }`}
-                  >
-                    {s.id}
+                <div key={s.id} className="flex items-center gap-3 min-w-[100px]">
+                  <div className={`w-10 h-10 rounded-2xl flex items-center justify-center border text-xs font-semibold ${active ? "bg-[#215c4c] text-white border-[#215c4c] shadow-md" : done ? "bg-[#e3f3e6] text-[#215c4c] border-[#89ad8f]" : "bg-white text-neutral-500 border-[#e5e5e5]"}`}>
+                    {done ? "✓" : s.id}
                   </div>
-                  <div className="block">
-                    <div
-                      className={`text-sm font-medium ${
-                        active ? "text-[#215c4c]" : "text-neutral-700"
-                      }`}
-                    >
-                      {s.label}
-                    </div>
-                    <div className="text-xs text-neutral-400">
-                      {done ? "Completed" : active ? "In progress" : "Upcoming"}
-                    </div>
+                  <div>
+                    <div className={`text-sm font-medium ${active ? "text-[#215c4c]" : "text-neutral-700"}`}>{s.label}</div>
+                    <div className="text-xs text-neutral-400">{done ? "Done" : active ? "In progress" : "Upcoming"}</div>
                   </div>
                 </div>
               );
             })}
           </div>
-
           <div className="max-w-4xl mx-auto mt-4 h-2 rounded-full bg-[#e8efe9] overflow-hidden">
-            <div
-              className="h-full bg-[linear-gradient(90deg,_#215c4c,_#5c927e)] transition-all"
-              style={{ width: `${progressPercent}%` }}
-            />
+            <div className="h-full bg-[linear-gradient(90deg,_#215c4c,_#5c927e)] transition-all duration-500" style={{ width: `${progressPercent}%` }} />
           </div>
         </div>
 
+        {/* Main card */}
         <div className="mt-10 flex justify-center">
           <div className="w-full max-w-5xl bg-white/95 border border-[#dfe8df] rounded-3xl shadow-[0_22px_70px_rgba(24,62,49,0.12)] overflow-hidden">
             <div className="px-6 sm:px-8 py-6 border-b border-[#edf2ed] bg-[linear-gradient(120deg,_#ffffff,_#f7fbf8)] flex items-center gap-4">
               {step > 1 && (
-                <button
-                  type="button"
-                  onClick={handleBack}
-                  className="w-10 h-10 flex items-center justify-center rounded-2xl border border-[#e6e6e6]
-                             bg-white hover:bg-[#fafafa] shadow-sm text-neutral-700 transition"
-                  aria-label="Go back"
-                >
-                  <span className="text-lg -ml-[2px]">‹</span>
+                <button type="button" onClick={handleBack} className="w-10 h-10 flex items-center justify-center rounded-2xl border border-[#e6e6e6] bg-white hover:bg-[#fafafa] shadow-sm text-neutral-700 transition">
+                  <span className="text-lg">‹</span>
                 </button>
               )}
-
               <div className="flex-1">
-                <div className="text-lg font-semibold text-neutral-900">
-                  {stepTitle}
-                </div>
+                <div className="text-lg font-semibold text-neutral-900">{stepTitle}</div>
                 <div className="text-sm text-neutral-500 mt-1">
-                  {step === 1 &&
-                    "Choose your preferred guest session slot. Available counselors will load automatically."}
-                  {step === 2 &&
-                    "Choose from counselors available in your selected date and time."}
-                  {step === 3 &&
-                    "Enter your guest details. Your information stays private."}
-                  {step === 4 &&
-                    "Review your guest booking and payment before continuing."}
+                  {step === 1 && "We automatically find the nearest slot with an available counselor."}
+                  {step === 2 && "These counselors are available and ready at your selected time."}
+                  {step === 3 && "Enter your details. Your information stays private."}
+                  {step === 4 && "Review and complete your booking."}
                 </div>
               </div>
-
               <div className="hidden sm:flex items-center gap-2 rounded-full border border-[#d6e5d9] bg-[#f4faf5] px-4 py-2 text-xs text-neutral-700">
                 Step {step} of 4
               </div>
             </div>
 
-            <div className="px-6 sm:px-8 py-8 min-h-[280px]">
+            <div className="px-6 sm:px-8 py-8 min-h-[320px]">
+
+              {/* ── STEP 1: Pick Time + Session Type ── */}
               {step === 1 && (
-                <div className="space-y-8">
-                  <p className="text-sm text-neutral-600">
-                    Choose your preferred guest session slot. After selecting
-                    time, available counselors will be loaded automatically.
-                  </p>
+                <div className="space-y-6">
 
-                  <div className="flex flex-wrap items-center justify-between gap-4">
-                    <div className="flex items-center gap-3">
-                      <span className="inline-flex rounded-full bg-[#edf5ef] p-1 text-xs">
-                        <button
-                          type="button"
-                          className="px-4 py-1 rounded-full bg-[#215c4c] text-white"
-                        >
-                          Week
-                        </button>
-                        <button
-                          type="button"
-                          className="px-4 py-1 rounded-full text-[#4b4b4b]"
-                        >
-                          Month
-                        </button>
-                      </span>
-                    </div>
-
-                    <div className="flex items-center gap-3">
-                      <select
-                        name="month"
-                        value={formData.month}
-                        onChange={handleMonthYearChange}
-                        className="bg-[#fffdf7] border border-[#efe7dc] rounded-2xl px-4 py-2 text-sm outline-none
-                                   focus:border-[#89ad8f] focus:ring-2 focus:ring-[#c9e2cf]"
-                      >
-                        {months.map((m) => (
-                          <option key={m}>{m}</option>
-                        ))}
-                      </select>
-
-                      <select
-                        name="year"
-                        value={formData.year}
-                        onChange={handleMonthYearChange}
-                        className="bg-[#fffdf7] border border-[#efe7dc] rounded-2xl px-4 py-2 text-sm outline-none
-                                   focus:border-[#89ad8f] focus:ring-2 focus:ring-[#c9e2cf]"
-                      >
-                        {years.map((y) => (
-                          <option key={y}>{y}</option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-7 gap-3">
-                    {weekData.map((item, idx) => {
-                      const active = idx === selectedDayIndex;
-
-                      return (
-                        <button
-                          key={`${item.dayName}-${item.date}-${idx}`}
-                          type="button"
-                          onClick={() => handleDayClick(idx)}
-                          className={`flex flex-col items-center justify-center rounded-2xl border py-3 transition ${
-                            active
-                              ? "border-[#215c4c] bg-[#f2fbf5] text-[#215c4c] shadow-sm"
-                              : "border-[#efe7dc] bg-white text-neutral-600 hover:bg-[#fafafa]"
-                          }`}
-                        >
-                          <span className="text-[11px]">{item.dayName}</span>
-                          <span className="text-sm font-semibold mt-1">
-                            {item.date}
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-
-                  <div>
-                    <h4 className="text-sm font-semibold text-neutral-900 mb-3">
-                      Choose Guest Session Time
-                    </h4>
-                    <div className="grid sm:grid-cols-3 gap-3">
-                      {timeSlots.map((slot) => {
-                        const active = selectedTime === slot;
-
-                        return (
-                          <button
-                            key={slot}
-                            type="button"
-                            onClick={() => handleTimeClick(slot)}
-                            className={`rounded-2xl border px-4 py-3 text-sm text-left transition ${
-                              active
-                                ? "border-[#215c4c] bg-[#f2fbf5] text-[#215c4c] shadow-sm"
-                                : "border-[#efe7dc] bg-white text-neutral-800 hover:bg-[#fafafa]"
-                            }`}
-                          >
-                            {slot}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  {loadingCounselors && (
-                    <div className="rounded-2xl border border-[#dce8df] bg-[#f8fcf9] px-5 py-4 text-sm text-neutral-600">
-                      Loading available counselors...
-                    </div>
-                  )}
-
-                  {!loadingCounselors && formData.time && (
-                    <div className="rounded-2xl border border-[#dce8df] bg-[#f8fcf9] px-5 py-4 text-sm text-neutral-700">
-                      <div>
-                        <span className="text-neutral-500">Selected Date:</span>{" "}
-                        {formData.month} {formData.date}, {formData.year}
-                      </div>
-                      <div className="mt-1">
-                        <span className="text-neutral-500">Selected Time:</span>{" "}
-                        {formData.time}
-                      </div>
-                      <div className="mt-1">
-                        <span className="text-neutral-500">
-                          Available Counselors:
-                        </span>{" "}
-                        {counselors.length}
+                  {/* Auto-finding spinner */}
+                  {autoFinding && (
+                    <div className="rounded-2xl border border-[#dce8df] bg-[#f4fbf6] px-5 py-5">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full border-[3px] border-[#215c4c] border-t-transparent animate-spin flex-shrink-0" />
+                        <div>
+                          <div className="text-sm font-semibold text-[#1e473b]">Finding nearest available counselor...</div>
+                          <div className="text-xs text-neutral-500 mt-0.5">Checking slot {checkedCount} of 6</div>
+                        </div>
                       </div>
                     </div>
                   )}
-                </div>
-              )}
 
-              {step === 2 && (
-                <div className="w-full space-y-6">
-                  <p className="text-sm text-neutral-600">
-                    Only counselors available for your selected date and time are
-                    shown here.
-                  </p>
+                  {/* Recommended slot */}
+                  {!autoFinding && selectedSlot && counselors.length > 0 && (
+                    <div className="rounded-2xl border-2 border-[#215c4c] bg-[#f2fbf5] px-5 py-5">
+                      <div className="flex items-center justify-between flex-wrap gap-3">
+                        <div>
+                          <div className="text-xs font-semibold uppercase tracking-wide text-[#5b7c71] mb-1">⚡ Recommended Slot</div>
+                          <div className="text-3xl font-bold text-[#1e473b]">{selectedSlot.label}</div>
+                          <div className="mt-1 flex items-center gap-2">
+                            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                            <span className="text-sm text-[#2d6151] font-medium">
+                              {selectedSlot.minsFromNow <= 0 ? "Available right now!" : `Starts in ${formatWaitTime(selectedSlot.minsFromNow)}`}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="rounded-xl border border-[#c9e2cf] bg-white px-4 py-3 text-center">
+                          <div className="text-2xl font-bold text-[#215c4c]">{counselors.length}</div>
+                          <div className="text-xs text-[#5b7c71] font-medium">counselor{counselors.length !== 1 ? "s" : ""} available</div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
 
-                  <div className="rounded-2xl border border-[#dce8df] bg-[#f8fcf9] px-5 py-4 text-sm text-neutral-700">
+                  {/* ── Session Type Selector ── */}
+                  {!autoFinding && (
                     <div>
-                      <span className="text-neutral-500">Selected Date:</span>{" "}
-                      {formData.month} {formData.date}, {formData.year}
+                      <div className="text-sm font-semibold text-neutral-700 mb-3">
+                        Session Type <span className="text-red-500">*</span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <button type="button" onClick={() => setSessionType("chat")}
+                          className={`p-4 rounded-2xl border-2 text-left transition-all hover:shadow-md ${sessionType === "chat" ? "border-[#215c4c] bg-[#f2fbf5] shadow-md" : "border-[#e5e7eb] hover:border-[#a8d4c3]"}`}>
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="text-2xl">💬</span>
+                            <span className="font-semibold text-sm text-[#1e293b]">Chat Session</span>
+                            {sessionType === "chat" && <span className="ml-auto text-[#215c4c] font-bold text-sm">✓</span>}
+                          </div>
+                          <p className="text-xs text-[#6b7280]">Text-based session. Great for privacy.</p>
+                        </button>
+                        <button type="button" onClick={() => setSessionType("video")}
+                          className={`p-4 rounded-2xl border-2 text-left transition-all hover:shadow-md ${sessionType === "video" ? "border-[#215c4c] bg-[#f2fbf5] shadow-md" : "border-[#e5e7eb] hover:border-[#a8d4c3]"}`}>
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="text-2xl">🎥</span>
+                            <span className="font-semibold text-sm text-[#1e293b]">Video Call</span>
+                            {sessionType === "video" && <span className="ml-auto text-[#215c4c] font-bold text-sm">✓</span>}
+                          </div>
+                          <p className="text-xs text-[#6b7280]">Face-to-face video session.</p>
+                        </button>
+                      </div>
                     </div>
-                    <div className="mt-1">
-                      <span className="text-neutral-500">Selected Time:</span>{" "}
-                      {formData.time || "Not selected yet"}
+                  )}
+
+                  {/* Error */}
+                  {!autoFinding && counselorsError && (
+                    <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4">
+                      <div className="text-sm font-semibold text-amber-800">😔 {counselorsError}</div>
+                      <button type="button" onClick={autoFindNextSlot}
+                        className="mt-3 inline-flex items-center rounded-full border border-[#89ad8f] bg-[#e3f3e6] px-5 py-2 text-sm font-semibold text-[#305b39] shadow-[0_3px_0_0_#89ad8f] hover:translate-y-[1px] transition">
+                        🔄 Try Again
+                      </button>
                     </div>
-                  </div>
+                  )}
 
-                  <div className="grid grid-cols-1 sm:grid-cols-[220px_1fr] gap-4 items-start">
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium text-neutral-800">
-                        Guest Counselor Selection <span className="text-red-500">*</span>
-                      </label>
-
-                      <select
-                        name="counselor"
-                        value={formData.counselorId}
-                        disabled={!formData.time || loadingCounselors}
-                        onChange={(e) => {
-                          const selectedId = Number(e.target.value);
-                          const c = counselors.find((x) => x.id === selectedId);
-
-                          setFormData((prev) => ({
-                            ...prev,
-                            counselor: c ? c.name : "",
-                            counselorId: c ? c.id : "",
-                            counselorVerified: c ? c.verified : false,
-                          }));
-                        }}
-                        className="w-full rounded-2xl border border-[#efe7dc] bg-[#fffdf7]
-                                   px-4 py-3 text-sm outline-none
-                                   focus:border-[#89ad8f] focus:ring-2 focus:ring-[#c9e2cf]
-                                   disabled:opacity-60 disabled:cursor-not-allowed"
-                      >
-                        <option value="">
-                          {!formData.time
-                            ? "Select date and time first"
-                            : loadingCounselors
-                            ? "Loading counselors..."
-                            : counselors.length > 0
-                            ? "Select a counselor"
-                            : "No counselors available"}
-                        </option>
-
-                        {counselors.map((c) => (
-                          <option key={c.id} value={c.id}>
-                            {c.name}
-                          </option>
-                        ))}
-                      </select>
-
-                      {counselorsError && (
-                        <p className="text-xs text-red-500">{counselorsError}</p>
+                  {/* Manual slot picker */}
+                  {!autoFinding && slots.length > 0 && (
+                    <div>
+                      <div className="text-sm font-semibold text-neutral-700 mb-3">Or choose a different time:</div>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 max-h-64 overflow-y-auto pr-1">
+                        {slots.slice(0, 24).map((slot) => {
+                          const isSelected = selectedSlot?.value === slot.value;
+                          return (
+                            <button key={slot.value} type="button" onClick={() => handleSlotClick(slot)} disabled={loadingCounselors}
+                              className={`rounded-2xl border px-3 py-3 text-sm text-left transition ${isSelected ? "border-[#215c4c] bg-[#f2fbf5] text-[#215c4c] shadow-sm" : "border-[#efe7dc] bg-white text-neutral-800 hover:bg-[#fafafa] hover:border-[#89ad8f]"}`}>
+                              <div className="font-semibold">{slot.label}</div>
+                              <div className="text-xs text-neutral-400 mt-0.5">{formatWaitTime(slot.minsFromNow)}</div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                      {loadingCounselors && (
+                        <div className="mt-3 rounded-xl border border-[#dce8df] bg-[#f8fcf9] px-4 py-3 text-sm text-neutral-600 flex items-center gap-2">
+                          <div className="w-4 h-4 border-2 border-[#215c4c] border-t-transparent rounded-full animate-spin" />
+                          Checking counselor availability...
+                        </div>
                       )}
                     </div>
+                  )}
 
-                    <div className="rounded-2xl border border-[#dce8df] bg-[#fbfdfb] px-5 py-4">
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="text-sm font-semibold text-neutral-900">
-                          {formData.counselor
-                            ? formData.counselor
-                            : "No guest counselor selected"}
-                        </div>
-
-                        {formData.counselor && (
-                          <span className="inline-flex items-center gap-2 rounded-full bg-[#e3f3e6] border border-[#89ad8f] px-3 py-1 text-xs font-semibold text-[#215c4c]">
-                            ✔ Available
-                          </span>
-                        )}
-                      </div>
-
-                      <p className="mt-3 text-xs text-neutral-500 leading-relaxed">
-                        These counselors are filtered by the selected guest slot.
-                      </p>
+                  {/* No slots today */}
+                  {!autoFinding && slots.length === 0 && (
+                    <div className="rounded-2xl border border-gray-200 bg-gray-50 px-5 py-6 text-center">
+                      <div className="text-2xl mb-2">🌙</div>
+                      <div className="text-sm font-semibold text-neutral-700">No more slots available today</div>
+                      <div className="text-xs text-neutral-500 mt-1">Sessions run until 9:00 PM. Please come back tomorrow!</div>
                     </div>
-                  </div>
+                  )}
                 </div>
               )}
 
+              {/* ── STEP 2: Counselor ── */}
+              {step === 2 && (
+                <div className="space-y-6">
+                  {selectedSlot && (
+                    <div className="rounded-2xl border border-[#dce8df] bg-[#f8fcf9] px-5 py-3 flex items-center justify-between">
+                      <div className="text-sm text-neutral-600">
+                        <span className="font-semibold text-[#1e473b]">⏰ {selectedSlot.label}</span>
+                        <span className="ml-2 text-neutral-400">·</span>
+                        <span className="ml-2">{formatWaitTime(selectedSlot.minsFromNow)} away</span>
+                        <span className="ml-2 text-neutral-400">·</span>
+                        <span className="ml-2">{sessionTypeIcon} {sessionTypeLabel}</span>
+                      </div>
+                      <button type="button" onClick={() => setStep(1)} className="text-xs text-[#215c4c] hover:underline font-medium">Change</button>
+                    </div>
+                  )}
+                  <p className="text-sm text-neutral-600">These counselors are available and ready at your selected time.</p>
+                  {counselors.length === 0 ? (
+                    <div className="text-center py-10 rounded-2xl border border-dashed border-[#d6dbd2] bg-[#fbfcfa]">
+                      <p className="text-sm text-neutral-500">No counselors available. Please go back and select a different time.</p>
+                    </div>
+                  ) : (
+                    <div className="grid sm:grid-cols-2 gap-4">
+                      {counselors.map((c) => (
+                        <button key={c.id} type="button"
+                          onClick={() => setFormData((p) => ({ ...p, counselor: c.name, counselorId: c.id }))}
+                          className={`text-left p-5 rounded-2xl border-2 transition-all hover:shadow-md ${formData.counselorId === c.id ? "border-[#215c4c] bg-[#f2fbf5] shadow-md" : "border-[#e5e7eb] hover:border-[#a8d4c3]"}`}>
+                          <div className="flex items-start gap-3">
+                            <div className="w-12 h-12 rounded-full bg-gradient-to-br from-[#215c4c] to-[#2a7a66] flex items-center justify-center text-white text-lg font-bold shadow-md flex-shrink-0">
+                              {c.name?.charAt(0) || "C"}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center justify-between gap-2">
+                                <h3 className="font-semibold text-[#1e293b]">{c.name}</h3>
+                                {formData.counselorId === c.id && <span className="text-[#215c4c] text-lg">✓</span>}
+                              </div>
+                              {c.specialization && <p className="text-xs text-[#6b7280] mt-0.5">{c.specialization}</p>}
+                              {c.experience_years && <p className="text-xs text-[#215c4c] font-medium mt-1">{c.experience_years}+ years experience</p>}
+                              <div className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-emerald-50 border border-emerald-200 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                                Available now
+                              </div>
+                            </div>
+                          </div>
+                          {c.bio && <p className="mt-3 text-xs text-[#6b7280] line-clamp-2">{c.bio}</p>}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* ── STEP 3: Guest Info ── */}
               {step === 3 && (
                 <div className="space-y-6">
-                  <p className="text-sm text-neutral-600">
-                    Enter your guest details so we can send updates related to
-                    your counseling session.
-                  </p>
-
+                  <p className="text-sm text-neutral-600">Enter your details. Your information stays private.</p>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                    <Field label="Guest Name" required>
-                      <input
-                        type="text"
-                        name="name"
-                        value={formData.name}
-                        onChange={handleChange}
-                        className="w-full rounded-2xl border border-[#efe7dc] bg-[#fffdf7]
-                                   px-4 py-3 text-sm outline-none
-                                   focus:border-[#89ad8f] focus:ring-2 focus:ring-[#c9e2cf]"
-                        placeholder="Enter guest name"
-                      />
+                    <Field label="Full Name" required>
+                      <input type="text" name="name" value={formData.name} onChange={handleChange}
+                        className="w-full rounded-2xl border border-[#efe7dc] bg-[#fffdf7] px-4 py-3 text-sm outline-none focus:border-[#89ad8f] focus:ring-2 focus:ring-[#c9e2cf]"
+                        placeholder="Enter your name" />
                     </Field>
-
                     <Field label="Preferred Name (optional)">
-                      <input
-                        type="text"
-                        name="nickname"
-                        value={formData.nickname}
-                        onChange={handleChange}
-                        className="w-full rounded-2xl border border-[#efe7dc] bg-[#fffdf7]
-                                   px-4 py-3 text-sm outline-none
-                                   focus:border-[#89ad8f] focus:ring-2 focus:ring-[#c9e2cf]"
-                        placeholder="Optional"
-                      />
+                      <input type="text" name="nickname" value={formData.nickname} onChange={handleChange}
+                        className="w-full rounded-2xl border border-[#efe7dc] bg-[#fffdf7] px-4 py-3 text-sm outline-none focus:border-[#89ad8f] focus:ring-2 focus:ring-[#c9e2cf]"
+                        placeholder="Optional" />
                     </Field>
                   </div>
-
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                    <Field label="Guest Email" required>
-                      <input
-                        type="email"
-                        name="email"
-                        value={formData.email}
-                        onChange={handleChange}
-                        className="w-full rounded-2xl border border-[#efe7dc] bg-[#fffdf7]
-                                   px-4 py-3 text-sm outline-none
-                                   focus:border-[#89ad8f] focus:ring-2 focus:ring-[#c9e2cf]"
-                        placeholder="example@gmail.com"
-                      />
+                    <Field label="Email" required>
+                      <input type="email" name="email" value={formData.email} onChange={handleChange}
+                        className="w-full rounded-2xl border border-[#efe7dc] bg-[#fffdf7] px-4 py-3 text-sm outline-none focus:border-[#89ad8f] focus:ring-2 focus:ring-[#c9e2cf]"
+                        placeholder="example@gmail.com" />
                     </Field>
-
-                    <Field label="Guest Phone" required>
-                      <input
-                        type="tel"
-                        name="phone"
-                        value={formData.phone}
-                        onChange={handleChange}
-                        className="w-full rounded-2xl border border-[#efe7dc] bg-[#fffdf7]
-                                   px-4 py-3 text-sm outline-none
-                                   focus:border-[#89ad8f] focus:ring-2 focus:ring-[#c9e2cf]"
-                        placeholder="98XXXXXXXX"
-                      />
+                    <Field label="Phone" required>
+                      <input type="tel" name="phone" value={formData.phone} onChange={handleChange}
+                        className="w-full rounded-2xl border border-[#efe7dc] bg-[#fffdf7] px-4 py-3 text-sm outline-none focus:border-[#89ad8f] focus:ring-2 focus:ring-[#c9e2cf]"
+                        placeholder="98XXXXXXXX" />
                     </Field>
                   </div>
-
                   <div className="rounded-2xl border border-[#dce8df] bg-[#f8fcf9] px-5 py-4 text-sm text-neutral-600">
-                    Your information is kept private and used only for your
-                    session. You may use a preferred name if that feels safer.
+                    🔒 Your information is kept private and only used for your session.
                   </div>
                 </div>
               )}
 
+              {/* ── STEP 4: Payment ── */}
               {step === 4 && (
                 <div className="space-y-6">
-                  <p className="text-sm text-neutral-600">
-                    Review your guest booking and payment before proceeding.
-                  </p>
-
-                  <div className="rounded-2xl border border-[#dce8df] bg-[#f8fcf9] px-5 py-4 text-sm text-neutral-700">
-                    <div className="font-semibold text-neutral-900">
-                      Guest Booking Summary
-                    </div>
-                    <div className="mt-2 space-y-1">
-                      <div>
-                        <span className="text-neutral-500">Counselor:</span>{" "}
-                        {formData.counselor}
+                  <p className="text-sm text-neutral-600">Review your booking and complete payment to confirm.</p>
+                  <div className="rounded-2xl border border-[#dce8df] bg-[#f8fcf9] px-5 py-5">
+                    <div className="font-semibold text-neutral-900 mb-3">Booking Summary</div>
+                    <div className="space-y-2 text-sm">
+                      <div className="flex justify-between"><span className="text-neutral-500">Counselor</span><span className="font-semibold text-neutral-800">{formData.counselor}</span></div>
+                      <div className="flex justify-between"><span className="text-neutral-500">Date</span><span className="font-semibold text-neutral-800">{new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}</span></div>
+                      <div className="flex justify-between"><span className="text-neutral-500">Time</span><span className="font-semibold text-[#215c4c]">{selectedSlot?.label} — in {formatWaitTime(selectedSlot?.minsFromNow)}</span></div>
+                      <div className="flex justify-between">
+                        <span className="text-neutral-500">Session Type</span>
+                        <span className="font-semibold text-neutral-800">{sessionTypeIcon} {sessionTypeLabel}</span>
                       </div>
-                      <div>
-                        <span className="text-neutral-500">Date:</span>{" "}
-                        {formData.month} {formData.date}, {formData.year}
-                      </div>
-                      <div>
-                        <span className="text-neutral-500">Time:</span>{" "}
-                        {formData.time}
-                      </div>
-                      <div>
-                        <span className="text-neutral-500">Guest Name:</span>{" "}
-                        {formData.name || "-"}
-                      </div>
-                      <div>
-                        <span className="text-neutral-500">Guest Email:</span>{" "}
-                        {formData.email || "-"}
-                      </div>
-                      <div>
-                        <span className="text-neutral-500">Guest Phone:</span>{" "}
-                        {formData.phone || "-"}
-                      </div>
-                      <div>
-                        <span className="text-neutral-500">Amount:</span> Rs. 500
+                      <div className="flex justify-between"><span className="text-neutral-500">Name</span><span className="font-semibold text-neutral-800">{formData.name}</span></div>
+                      <div className="flex justify-between"><span className="text-neutral-500">Email</span><span className="font-semibold text-neutral-800">{formData.email}</span></div>
+                      <div className="flex justify-between border-t border-[#e5ece6] pt-2 mt-2">
+                        <span className="font-semibold text-neutral-500">Amount</span>
+                        <span className="font-bold text-[#215c4c] text-lg">Rs. 500</span>
                       </div>
                     </div>
+                    {sessionType === "video" && (
+                      <div className="mt-3 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-700">
+                        🎥 A video room link will be sent after payment confirmation.
+                      </div>
+                    )}
                   </div>
-
                   <div className="space-y-2">
-                    <div className="text-sm font-semibold text-neutral-900">
-                      Guest Payment Method
-                    </div>
-                    <select
-                      name="paymentMethod"
-                      value={formData.paymentMethod}
-                      onChange={handleChange}
-                      className="w-full sm:w-72 rounded-2xl border border-[#efe7dc] bg-[#fffdf7]
-                                 px-4 py-3 text-sm outline-none
-                                 focus:border-[#89ad8f] focus:ring-2 focus:ring-[#c9e2cf]"
-                    >
-                      <option value="">Select</option>
+                    <div className="text-sm font-semibold text-neutral-900">Payment Method</div>
+                    <select name="paymentMethod" value={formData.paymentMethod} onChange={handleChange}
+                      className="w-full sm:w-72 rounded-2xl border border-[#efe7dc] bg-[#fffdf7] px-4 py-3 text-sm outline-none focus:border-[#89ad8f] focus:ring-2 focus:ring-[#c9e2cf]">
+                      <option value="">Select payment method</option>
                       <option value="esewa">eSewa</option>
                     </select>
                   </div>
-
                   {!paymentData ? (
-                    <div className="rounded-2xl border border-[#e3ebdf] bg-white px-4 py-4 text-xs text-neutral-500 space-y-3">
-                      <div>
-                        After successful payment, your guest booking confirmation and
-                        follow-up details continue through the payment flow.
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={initializeGuestEsewaPayment}
-                        disabled={!canContinue || loading}
-                        className="inline-flex items-center rounded-full border border-[#89ad8f] bg-[#e3f3e6]
-                                   px-7 py-3 text-sm font-semibold text-[#305b39]
-                                   shadow-[0_4px_0_0_#89ad8f] hover:translate-y-[1px]
-                                   hover:shadow-[0_3px_0_0_#89ad8f] transition
-                                   disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        {loading ? "Initializing..." : "Initialize eSewa Payment"}
-                      </button>
-                    </div>
+                    <button type="button" onClick={initializeGuestEsewaPayment} disabled={!canContinue || loading}
+                      className="inline-flex items-center gap-2 rounded-full border border-[#89ad8f] bg-[#e3f3e6] px-7 py-3 text-sm font-semibold text-[#305b39] shadow-[0_4px_0_0_#89ad8f] hover:translate-y-[1px] hover:shadow-[0_3px_0_0_#89ad8f] transition disabled:opacity-50 disabled:cursor-not-allowed">
+                      {loading ? (<><span className="w-4 h-4 border-2 border-[#305b39] border-t-transparent rounded-full animate-spin" />Initializing...</>) : "💳 Initialize eSewa Payment"}
+                    </button>
                   ) : (
                     <div className="space-y-3 rounded-2xl border border-green-200 bg-green-50 px-4 py-4">
-                      <div className="text-sm text-green-800">
-                        Guest payment initialized successfully.
-                      </div>
-                      <div className="text-xs text-green-700">
-                        Booking ID: <span className="font-semibold">{guestBookingId}</span>
-                        <br />
-                        Transaction: <span className="font-semibold">{guestTransactionUuid}</span>
-                      </div>
-
+                      <div className="text-sm font-semibold text-green-800">✅ Payment initialized!</div>
+                      <div className="text-xs text-green-700">Booking ID: <span className="font-semibold">{guestBookingId}</span></div>
                       <div className="flex flex-wrap gap-3">
-                        <button
-                          type="button"
-                          onClick={() =>
-                            submitEsewaForm(paymentData.payment_url, paymentData.form_fields)
-                          }
-                          className="inline-flex items-center rounded-full bg-[#215c4c] px-6 py-3 text-sm font-semibold text-white hover:opacity-95"
-                        >
-                          Continue to eSewa
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={handleGuestSimulateSuccess}
-                          className="inline-flex items-center rounded-full bg-blue-600 px-6 py-3 text-sm font-semibold text-white hover:bg-blue-700"
-                        >
-                          Simulate Success
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setPaymentData(null);
-                            setGuestBookingId(null);
-                            setGuestTransactionUuid("");
-                            setSuccessMessage("");
-                          }}
-                          className="inline-flex items-center rounded-full border border-[#d1d5db] bg-white px-6 py-3 text-sm font-semibold text-neutral-700"
-                        >
-                          Re-initialize
-                        </button>
+                        <button type="button" onClick={() => submitEsewaForm(paymentData.payment_url, paymentData.form_fields)}
+                          className="inline-flex items-center rounded-full bg-[#215c4c] px-6 py-3 text-sm font-semibold text-white hover:opacity-95">Continue to eSewa →</button>
+                        <button type="button" onClick={handleGuestSimulateSuccess}
+                          className="inline-flex items-center rounded-full bg-blue-600 px-6 py-3 text-sm font-semibold text-white hover:bg-blue-700">Simulate Success</button>
+                        <button type="button" onClick={() => { setPaymentData(null); setGuestBookingId(null); setGuestTransactionUuid(""); }}
+                          className="inline-flex items-center rounded-full border border-[#d1d5db] bg-white px-6 py-3 text-sm font-semibold text-neutral-700">Re-initialize</button>
                       </div>
                     </div>
                   )}
@@ -1000,33 +645,20 @@ export default function BookAppointment() {
               )}
             </div>
 
+            {/* Footer */}
             <div className="px-6 sm:px-8 py-5 border-t border-[#f0f0f0] bg-white flex flex-wrap items-center justify-between gap-3">
               <div className="text-xs text-neutral-500">
-                {step === 1 && "Choose your preferred guest session slot."}
-                {step === 2 &&
-                  "Choose an available counselor for the selected slot."}
-                {step === 3 && "Enter your guest details to continue."}
-                {step === 4 &&
-                  "Your guest booking will be confirmed after successful payment."}
+                {step === 1 && selectedSlot && `Selected: ${selectedSlot.label} · ${sessionTypeIcon} ${sessionTypeLabel} · ${counselors.length} counselor${counselors.length !== 1 ? "s" : ""} available`}
+                {step === 1 && !selectedSlot && (autoFinding ? "Finding next available slot..." : "Select a time slot to continue.")}
+                {step === 2 && "Choose a counselor to continue."}
+                {step === 3 && "All fields marked * are required."}
+                {step === 4 && "Session starts after payment confirmation."}
               </div>
-
-              {step < 4 ? (
-                <button
-                  type="button"
-                  onClick={handleNext}
-                  disabled={!canContinue || loading}
-                  className="inline-flex items-center rounded-full border border-[#89ad8f] bg-[#e3f3e6]
-                             px-7 py-3 text-sm font-semibold text-[#305b39]
-                             shadow-[0_4px_0_0_#89ad8f] hover:translate-y-[1px]
-                             hover:shadow-[0_3px_0_0_#89ad8f] transition
-                             disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  Continue
+              {step < 4 && (
+                <button type="button" onClick={handleNext} disabled={!canContinue || loading}
+                  className="inline-flex items-center rounded-full border border-[#89ad8f] bg-[#e3f3e6] px-7 py-3 text-sm font-semibold text-[#305b39] shadow-[0_4px_0_0_#89ad8f] hover:translate-y-[1px] hover:shadow-[0_3px_0_0_#89ad8f] transition disabled:opacity-50 disabled:cursor-not-allowed">
+                  Continue →
                 </button>
-              ) : (
-                <div className="text-xs text-neutral-500">
-                  Use the payment actions above.
-                </div>
               )}
             </div>
           </div>

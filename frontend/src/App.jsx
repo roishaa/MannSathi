@@ -11,7 +11,6 @@ import About from "./pages/About";
 import Quiz from "./pages/Quiz";
 import GuestSession from "./pages/GuestSession";
 
-
 // ================= COUNSELOR PAGES =================
 import CounselorSignup from "./pages/counselor/CounselorSignup";
 import CounselorLogin from "./pages/counselor/CounselorLogin";
@@ -32,6 +31,8 @@ import PaymentSuccess from "./pages/users/PaymentSuccess";
 import PaymentFailed from "./pages/users/PaymentFailed";
 import Sessions from "./pages/users/Sessions";
 import Resources from "./pages/users/Resources";
+import VideoRoom from "./pages/users/VideoRoom";
+import AIChatWidget from "./pages/components/AIChatWidget";
 
 // ================= TOPIC PAGES =================
 import Anxiety from "./pages/topics/Anxiety";
@@ -55,7 +56,9 @@ import CounselorApproval from "./pages/hospitalAdmin/CounselorApproval";
 import HospitalAdminSchedules from "./pages/hospitalAdmin/HospitalAdminSchedules";
 import AppointmentsPreview from "./pages/hospitalAdmin/AppointmentsPreview";
 import HospitalAdminPatients from "./pages/hospitalAdmin/HospitalAdminPatients";
+import HospitalAdminPaymentHistory from "./pages/hospitalAdmin/HospitalAdminPaymentHistory";
 import UserRoute from "./routes/UserRoute";
+import SessionHistoryPage from "./pages/hospitalAdmin/SessionHistoryPage";
 
 // Optional: Unauthorized page (recommended)
 function Unauthorized() {
@@ -72,6 +75,7 @@ function Unauthorized() {
 function App() {
   return (
     <BrowserRouter>
+      <AIChatWidget />
       <Routes>
         {/* ================= PUBLIC ROUTES ================= */}
         <Route path="/" element={<Home />} />
@@ -83,14 +87,13 @@ function App() {
         <Route path="/quiz" element={<Quiz />} />
         <Route path="/guest-session/:id" element={<GuestSession />} />
 
-        
-
         {/* ================= COUNSELOR ROUTES ================= */}
         <Route path="/counselor/signup" element={<CounselorSignup />} />
         <Route path="/counselor/login" element={<CounselorLogin />} />
         <Route element={<CounselorRoute />}>
-  <Route path="/counselor/dashboard" element={<CounselorDashboard />} />
-</Route>
+          <Route path="/counselor/dashboard" element={<CounselorDashboard />} />
+          <Route path="/counselor/video-room/:id" element={<VideoRoom />} />
+        </Route>
 
         {/* ================= USER ROUTES (PROTECTED) ================= */}
         <Route element={<UserRoute />}>
@@ -108,6 +111,7 @@ function App() {
           <Route path="/payment-failed" element={<PaymentFailed />} />
           <Route path="/sessions" element={<Sessions />} />
           <Route path="/resources" element={<Resources />} />
+          <Route path="/users/video-room/:id" element={<VideoRoom />} />
         </Route>
 
         {/* ================= TOPIC ROUTES ================= */}
@@ -134,6 +138,8 @@ function App() {
           <Route path="/hospital-admin/schedules" element={<HospitalAdminSchedules />} />
           <Route path="/hospital-admin/appointments" element={<AppointmentsPreview />} />
           <Route path="/hospital-admin/patients" element={<HospitalAdminPatients />} />
+          <Route path="/hospital-admin/payment-history" element={<HospitalAdminPaymentHistory />} />
+          <Route path="/hospital-admin/session-history" element={<SessionHistoryPage />} />
         </Route>
       </Routes>
     </BrowserRouter>
