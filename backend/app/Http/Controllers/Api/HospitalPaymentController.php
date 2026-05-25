@@ -75,4 +75,28 @@ class HospitalPaymentController extends Controller
             'data' => $all
         ]);
     }
+    public function userPayments(Request $request)
+{
+    $user = $request->user();
+
+    $appointments = Appointment::with(['counselor'])
+        ->where('user_id', $user->id)
+        ->whereNotNull('payment_status')
+        ->orderBy('date_time', 'desc')
+        ->get();
+
+    $payments = $appointments->map(function ($a) {
+        return [
+            'id'             => 'U-' . $a->id,
+            'counselor_name' => $a->counselor?->name ?? '—',
+            'payment_date'   => $a->date_time?->toDateString(),
+            'payment_method' => $a->payment_method ?? '—',
+            'transaction_id' => $a->transaction_ref ?? '—',
+            'amount'         => $a->amount ?? 0,
+            'payment_status' => $a->payment_status ?? '—',
+        ];
+    });
+
+    return response()->json(['data' => $payments]);
+}
 }

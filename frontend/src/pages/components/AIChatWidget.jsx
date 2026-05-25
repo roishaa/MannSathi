@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../../utils/api";
 
-const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
+const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
 
 export default function AIChatWidget() {
   const navigate = useNavigate();
@@ -10,8 +10,7 @@ export default function AIChatWidget() {
   const [messages, setMessages] = useState([
     {
       role: "assistant",
-      content:
-        "Hi 👋 I'm MannSathi's AI assistant. Tell me what you're going through and I'll help find the right counselor for you.",
+      content: "Hi 👋 I'm MannSathi's AI assistant. Tell me what you're going through and I'll help find the right counselor for you.",
     },
   ]);
   const [input, setInput] = useState("");
@@ -46,7 +45,7 @@ export default function AIChatWidget() {
       )
       .join("\n");
 
-    return `You are a compassionate AI assistant for MannSathi, a mental health platform based in Nepal. 
+    return `You are a compassionate AI assistant for MannSathi, a mental health platform based in Nepal.
 Your role is to listen empathetically to users and suggest the most suitable counselor from the available list below.
 
 AVAILABLE COUNSELORS:
@@ -57,7 +56,7 @@ INSTRUCTIONS:
 - After listening, suggest ONE counselor by name with a brief reason why they are a good fit
 - Also suggest one relevant self-help resource from this list based on their concern:
   * Anxiety → /topics/anxiety
-  * Stress → /topics/stress  
+  * Stress → /topics/stress
   * Depression → /topics/depression
   * Relationships → /topics/relationships
   * OCD → /topics/ocd
@@ -74,7 +73,6 @@ SUGGESTION:{"counselor_id": <id>, "counselor_name": "<name>", "reason": "<short 
     const marker = "SUGGESTION:";
     const idx = raw.indexOf(marker);
     if (idx === -1) return { text: raw, suggestion: null };
-
     const text = raw.slice(0, idx).trim();
     try {
       const jsonStr = raw.slice(idx + marker.length).trim();
@@ -105,23 +103,22 @@ SUGGESTION:{"counselor_id": <id>, "counselor_name": "<name>", "reason": "<short 
         content: m.content,
       }));
 
-      const response = await fetch(OPENROUTER_API_URL, {
+      const response = await fetch(GROQ_API_URL, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${import.meta.env.VITE_OPENROUTER_API_KEY}`,
-          "HTTP-Referer": "http://localhost:5173",
+          "Authorization": `Bearer ${import.meta.env.VITE_GROQ_API_KEY}`,
         },
         body: JSON.stringify({
-          model: "mistralai/mistral-7b-instruct:free",
+          model: "llama-3.3-70b-versatile",
           messages: [
             { role: "system", content: systemPrompt },
             ...apiMessages,
           ],
+          max_tokens: 1000,
+          temperature: 0.7,
         }),
       });
-      console.log("KEY:", import.meta.env.VITE_OPENROUTER_API_KEY);
-console.log("URL:", OPENROUTER_API_URL);
 
       const data = await response.json();
       const raw = data?.choices?.[0]?.message?.content || "I'm sorry, I couldn't process that. Please try again.";
@@ -145,9 +142,18 @@ console.log("URL:", OPENROUTER_API_URL);
   const handleBookNow = () => {
     if (!suggestedCounselor) return;
     setOpen(false);
-    navigate("/users/appointments/book", {
-      state: { suggestedCounselorId: suggestedCounselor.counselor_id },
-    });
+
+    const token = localStorage.getItem("user_token");
+
+    if (token) {
+      // Logged in → go to full booking page with pre-selected counselor
+      navigate("/users/appointments/book", {
+        state: { suggestedCounselorId: suggestedCounselor.counselor_id },
+      });
+    } else {
+      // Not logged in → go to guest booking page
+      navigate("/book-appointment");
+    }
   };
 
   const handleKeyDown = (e) => {
@@ -161,8 +167,7 @@ console.log("URL:", OPENROUTER_API_URL);
     setMessages([
       {
         role: "assistant",
-        content:
-          "Hi 👋 I'm MannSathi's AI assistant. Tell me what you're going through and I'll help find the right counselor for you.",
+        content: "Hi 👋 I'm MannSathi's AI assistant. Tell me what you're going through and I'll help find the right counselor for you.",
       },
     ]);
     setSuggestedCounselor(null);
@@ -171,7 +176,6 @@ console.log("URL:", OPENROUTER_API_URL);
 
   return (
     <>
-      {/* ── Floating bubble ── */}
       <button
         onClick={() => setOpen((p) => !p)}
         aria-label="Open AI assistant"
@@ -187,7 +191,6 @@ console.log("URL:", OPENROUTER_API_URL);
         )}
       </button>
 
-      {/* ── Chat panel ── */}
       {open && (
         <div
           className="fixed bottom-24 right-6 z-50 w-[360px] max-w-[calc(100vw-2rem)] rounded-3xl border border-white/60 bg-white shadow-[0_24px_70px_rgba(20,38,33,0.18)] flex flex-col overflow-hidden"
@@ -204,11 +207,7 @@ console.log("URL:", OPENROUTER_API_URL);
                 <p className="text-white/70 text-xs">Find your counselor</p>
               </div>
             </div>
-            <button
-              onClick={handleReset}
-              title="Start over"
-              className="text-white/60 hover:text-white text-xs transition"
-            >
+            <button onClick={handleReset} title="Start over" className="text-white/60 hover:text-white text-xs transition">
               ↺ Reset
             </button>
           </div>
@@ -216,10 +215,7 @@ console.log("URL:", OPENROUTER_API_URL);
           {/* Messages */}
           <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3 bg-[#f9fbf9]">
             {messages.map((msg, i) => (
-              <div
-                key={i}
-                className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
-              >
+              <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
                 <div
                   className={`max-w-[82%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${
                     msg.role === "user"
@@ -257,26 +253,19 @@ console.log("URL:", OPENROUTER_API_URL);
                     {suggestedCounselor.counselor_name?.charAt(0) || "C"}
                   </div>
                   <div>
-                    <p className="text-sm font-semibold text-[#1e293b]">
-                      {suggestedCounselor.counselor_name}
-                    </p>
+                    <p className="text-sm font-semibold text-[#1e293b]">{suggestedCounselor.counselor_name}</p>
                     <p className="text-xs text-[#6b7280]">{suggestedCounselor.reason}</p>
                   </div>
                 </div>
-
                 <button
                   onClick={handleBookNow}
                   className="w-full rounded-xl bg-[#1f4e43] text-white text-sm font-semibold py-2.5 transition-all hover:bg-[#173a32] hover:shadow-md"
                 >
                   Book with {suggestedCounselor.counselor_name} →
                 </button>
-
                 {suggestedCounselor.resource_path && (
                   <button
-                    onClick={() => {
-                      setOpen(false);
-                      navigate(suggestedCounselor.resource_path);
-                    }}
+                    onClick={() => { setOpen(false); navigate(suggestedCounselor.resource_path); }}
                     className="w-full rounded-xl border border-[#1f4e43]/30 text-[#1f4e43] text-sm font-medium py-2 transition-all hover:bg-[#f0faf5]"
                   >
                     📚 {suggestedCounselor.resource_label || "View Resources"}
@@ -284,7 +273,6 @@ console.log("URL:", OPENROUTER_API_URL);
                 )}
               </div>
             )}
-
             <div ref={bottomRef} />
           </div>
 

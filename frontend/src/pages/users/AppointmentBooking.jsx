@@ -37,6 +37,10 @@ export default function BookAppointment() {
   const [bookedSlots, setBookedSlots] = useState([]);
   const [loadingSlots, setLoadingSlots] = useState(false);
 
+  // ── NEW: track which time slots are unavailable due to counselor schedule ──
+  const [unavailableSlots, setUnavailableSlots] = useState([]);
+  const [checkingAvailability, setCheckingAvailability] = useState(false);
+
   const [paymentOpen, setPaymentOpen] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState("esewa");
   const [paying, setPaying] = useState(false);
@@ -77,7 +81,6 @@ export default function BookAppointment() {
         const loaded = res.data?.items || res.data?.data || res.data || [];
         setCounselors(loaded);
 
-        // ── Pre-select AI suggested counselor if coming from chat widget ──
         if (suggestedCounselorId) {
           const matched = loaded.find(
             (c) => String(c.id) === String(suggestedCounselorId)
@@ -159,6 +162,7 @@ export default function BookAppointment() {
     { label: "10:00 PM", subLabel: "Night",     value: "22:00", icon: "🌙" },
   ];
 
+  // ── Fetch booked slots ────────────────────────────────────────────────────
   useEffect(() => {
     const fetchBookedSlots = async () => {
       if (!formData.counselor_id || !selectedDateISO) {
@@ -180,14 +184,42 @@ export default function BookAppointment() {
     fetchBookedSlots();
   }, [formData.counselor_id, selectedDateISO]);
 
+  // ── NEW: Check counselor availability schedule for the selected date ───────
+  // For each time slot, check if counselor is available (within working hours)
+  useEffect(() => {
+    const checkCounselorAvailability = async () => {
+      if (!formData.counselor_id || !selectedDateISO) {
+        setUnavailableSlots([]);
+        return;
+      }
+      setCheckingAvailability(true);
+      try {
+        const res = await api.get("/counselor/availability/check", {
+          params: {
+            counselor_id: formData.counselor_id,
+            date: selectedDateISO,
+          },
+        });
+        // Backend returns array of unavailable time strings e.g. ["20:00", "21:00", "22:00"]
+        setUnavailableSlots(res.data?.unavailable_slots || []);
+      } catch {
+        // If endpoint fails, don't block user — just show all slots
+        setUnavailableSlots([]);
+      } finally {
+        setCheckingAvailability(false);
+      }
+    };
+    checkCounselorAvailability();
+  }, [formData.counselor_id, selectedDateISO]);
+
   useEffect(() => {
     if (!selectedTime) return;
     const nowPast = isSlotInPast(selectedTime, selectedDateISO);
-    if (nowPast || bookedSlots.includes(selectedTime)) {
+    if (nowPast || bookedSlots.includes(selectedTime) || unavailableSlots.includes(selectedTime)) {
       setSelectedTime("");
       setFormData((p) => ({ ...p, time: "" }));
     }
-  }, [bookedSlots, selectedDateISO, selectedTime]);
+  }, [bookedSlots, unavailableSlots, selectedDateISO, selectedTime]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -209,6 +241,7 @@ export default function BookAppointment() {
       time: "",
     }));
     setSelectedTime("");
+    setUnavailableSlots([]);
   };
 
   const handleDayClick = (dateObj) => {
@@ -220,6 +253,7 @@ export default function BookAppointment() {
   const handleTimeClick = (slot) => {
     if (bookedSlots.includes(slot.value)) return;
     if (isSlotInPast(slot.value, selectedDateISO)) return;
+    if (unavailableSlots.includes(slot.value)) return; // ── NEW
     setSelectedTime(slot.value);
     setFormData((p) => ({ ...p, time: slot.value }));
   };
@@ -236,12 +270,13 @@ export default function BookAppointment() {
         !!formData.time &&
         !!formData.type &&
         !bookedSlots.includes(formData.time) &&
+        !unavailableSlots.includes(formData.time) && // ── NEW
         !isSlotInPast(formData.time, selectedDateISO)
       );
     }
     if (step === 3) return !!formData.name && !!formData.email && !!formData.phone;
     return true;
-  }, [step, formData, bookedSlots, selectedDateISO]);
+  }, [step, formData, bookedSlots, unavailableSlots, selectedDateISO]);
 
   const submitEsewaForm = (data) => {
     if (!data?.payment_url || !data?.form_fields) {
@@ -400,7 +435,6 @@ export default function BookAppointment() {
             <h2 className="text-2xl font-bold text-[#1e293b] mb-2">{stepTitles[step - 1].title}</h2>
             <p className="text-[#6b7280]">{stepTitles[step - 1].desc}</p>
 
-            {/* ── AI suggestion notice ── */}
             {step === 1 && suggestedCounselorId && (
               <div className="mt-4 flex items-center gap-2 rounded-2xl bg-[#f0faf5] border border-[#a8d4c3] px-4 py-3">
                 <span className="text-lg">🧠</span>
@@ -440,14 +474,12 @@ export default function BookAppointment() {
                         }`}
                         type="button"
                       >
-                        {/* ── AI Recommended badge ── */}
                         {isAISuggested && (
                           <div className="mb-3 inline-flex items-center gap-1.5 rounded-full bg-[#f0faf5] border border-[#a8d4c3] px-3 py-1">
                             <span className="text-xs">🧠</span>
                             <span className="text-xs font-semibold text-[#1f4e43]">AI Recommended</span>
                           </div>
                         )}
-
                         <div className="flex items-start gap-4">
                           <div className="w-14 h-14 rounded-full bg-gradient-to-br from-[#215c4c] to-[#2a7a66] flex items-center justify-center text-white text-xl font-bold shadow-md">
                             {c.name?.charAt(0) || "C"}
@@ -476,15 +508,8 @@ export default function BookAppointment() {
                   Session Type <span className="text-red-500">*</span>
                 </label>
                 <div className="grid grid-cols-2 gap-4">
-                  <button
-                    type="button"
-                    onClick={() => handleSelectType("chat")}
-                    className={`p-5 rounded-2xl border-2 transition-all text-left hover:shadow-md ${
-                      formData.type === "chat"
-                        ? "border-[#215c4c] bg-[#f2fbf5] shadow-md"
-                        : "border-[#e5e7eb] hover:border-[#a8d4c3]"
-                    }`}
-                  >
+                  <button type="button" onClick={() => handleSelectType("chat")}
+                    className={`p-5 rounded-2xl border-2 transition-all text-left hover:shadow-md ${formData.type === "chat" ? "border-[#215c4c] bg-[#f2fbf5] shadow-md" : "border-[#e5e7eb] hover:border-[#a8d4c3]"}`}>
                     <div className="flex items-center gap-3 mb-2">
                       <span className="text-3xl">💬</span>
                       <span className="font-semibold text-[#1e293b]">Chat Session</span>
@@ -492,16 +517,8 @@ export default function BookAppointment() {
                     </div>
                     <p className="text-xs text-[#6b7280]">Text-based counseling session. Great for privacy and flexibility.</p>
                   </button>
-
-                  <button
-                    type="button"
-                    onClick={() => handleSelectType("video")}
-                    className={`p-5 rounded-2xl border-2 transition-all text-left hover:shadow-md ${
-                      formData.type === "video"
-                        ? "border-[#215c4c] bg-[#f2fbf5] shadow-md"
-                        : "border-[#e5e7eb] hover:border-[#a8d4c3]"
-                    }`}
-                  >
+                  <button type="button" onClick={() => handleSelectType("video")}
+                    className={`p-5 rounded-2xl border-2 transition-all text-left hover:shadow-md ${formData.type === "video" ? "border-[#215c4c] bg-[#f2fbf5] shadow-md" : "border-[#e5e7eb] hover:border-[#a8d4c3]"}`}>
                     <div className="flex items-center gap-3 mb-2">
                       <span className="text-3xl">🎥</span>
                       <span className="font-semibold text-[#1e293b]">Video Call</span>
@@ -536,20 +553,14 @@ export default function BookAppointment() {
                     const isSelected = formData.date === dateObj.day.toString();
                     const isPast = dateObj.isPast;
                     return (
-                      <button
-                        key={`${dateObj.dayName}-${dateObj.day}`}
-                        onClick={() => handleDayClick(dateObj)}
-                        disabled={isPast}
-                        title={isPast ? "This date has already passed" : undefined}
+                      <button key={`${dateObj.dayName}-${dateObj.day}`} onClick={() => handleDayClick(dateObj)}
+                        disabled={isPast} title={isPast ? "This date has already passed" : undefined}
                         className={`p-3 rounded-xl border-2 transition-all ${
-                          isPast
-                            ? "border-[#e5e7eb] bg-[#f9fafb] text-[#d1d5db] cursor-not-allowed opacity-50"
-                            : isSelected
-                            ? "border-[#215c4c] bg-[#215c4c] text-white shadow-lg scale-105"
-                            : "border-[#e5e7eb] hover:border-[#a8d4c3] hover:shadow-md"
+                          isPast ? "border-[#e5e7eb] bg-[#f9fafb] text-[#d1d5db] cursor-not-allowed opacity-50"
+                          : isSelected ? "border-[#215c4c] bg-[#215c4c] text-white shadow-lg scale-105"
+                          : "border-[#e5e7eb] hover:border-[#a8d4c3] hover:shadow-md"
                         }`}
-                        type="button"
-                      >
+                        type="button">
                         <div className="text-xs font-medium mb-1">{dateObj.dayName}</div>
                         <div className="text-lg font-bold">{dateObj.day}</div>
                       </button>
@@ -561,43 +572,59 @@ export default function BookAppointment() {
               <div>
                 <label className="block text-sm font-medium text-[#374151] mb-3">
                   Choose Time
+                  {/* ── NEW: show checking indicator ── */}
+                  {(loadingSlots || checkingAvailability) && (
+                    <span className="ml-2 text-xs font-normal text-[#6b7280]">Checking availability...</span>
+                  )}
                   {selectedDateISO === `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}` && (
                     <span className="ml-2 text-xs font-normal text-amber-600">(past slots for today are disabled)</span>
                   )}
                 </label>
-                {loadingSlots && <p className="text-sm text-[#6b7280] mb-3">Checking available slots...</p>}
                 <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
                   {timeSlots.map((slot) => {
-                    const isSelected = selectedTime === slot.value;
-                    const isBooked = bookedSlots.includes(slot.value);
-                    const isPast = isSlotInPast(slot.value, selectedDateISO);
-                    const isDisabled = isBooked || isPast;
+                    const isSelected   = selectedTime === slot.value;
+                    const isBooked     = bookedSlots.includes(slot.value);
+                    const isPast       = isSlotInPast(slot.value, selectedDateISO);
+                    // ── NEW: check counselor working hours ──
+                    const isUnavailable = unavailableSlots.includes(slot.value);
+                    const isDisabled   = isBooked || isPast || isUnavailable;
+
                     return (
-                      <button
-                        key={slot.value}
-                        onClick={() => !isDisabled && handleTimeClick(slot)}
+                      <button key={slot.value} onClick={() => !isDisabled && handleTimeClick(slot)}
                         disabled={isDisabled}
-                        title={isPast ? "This time has already passed today" : isBooked ? "This slot is already booked" : undefined}
+                        title={
+                          isPast        ? "This time has already passed today"
+                          : isBooked    ? "This slot is already booked"
+                          : isUnavailable ? "Counselor is not available at this time"
+                          : undefined
+                        }
                         className={`p-4 rounded-xl border-2 transition-all text-left ${
                           isPast
                             ? "border-gray-200 bg-gray-50 text-gray-300 cursor-not-allowed opacity-60"
-                            : isBooked
+                          : isBooked
                             ? "border-red-300 bg-red-50 text-red-400 cursor-not-allowed opacity-80"
-                            : isSelected
+                          : isUnavailable
+                            ? "border-gray-200 bg-gray-50 text-gray-300 cursor-not-allowed opacity-60"
+                          : isSelected
                             ? "border-[#215c4c] bg-[#f2fbf5] shadow-md"
-                            : "border-[#e5e7eb] hover:border-[#a8d4c3] hover:shadow-md"
+                          : "border-[#e5e7eb] hover:border-[#a8d4c3] hover:shadow-md"
                         }`}
-                        type="button"
-                      >
+                        type="button">
                         <div className="flex items-center gap-2 mb-1">
                           <span className="text-xl">{slot.icon}</span>
                           <span className="font-semibold text-sm">
                             {slot.label}
                             {isPast && " (Past)"}
                             {!isPast && isBooked && " (Booked)"}
+                            {!isPast && !isBooked && isUnavailable && " (Unavailable)"}
                           </span>
                         </div>
-                        <p className="text-xs">{isPast ? "Time passed" : isBooked ? "Unavailable" : slot.subLabel}</p>
+                        <p className="text-xs">
+                          {isPast ? "Time passed"
+                          : isBooked ? "Unavailable"
+                          : isUnavailable ? "Outside working hours"
+                          : slot.subLabel}
+                        </p>
                       </button>
                     );
                   })}
@@ -697,16 +724,11 @@ export default function BookAppointment() {
           {/* ── Navigation ── */}
           <div className="flex items-center justify-between mt-10 pt-6 border-t border-[#e5e7eb]">
             {step > 1 ? (
-              <button onClick={handleBack} className="px-6 py-3 rounded-full border-2 border-[#e5e7eb] text-[#374151] font-medium hover:border-[#215c4c] hover:text-[#215c4c] transition" type="button">
-                ← Back
-              </button>
+              <button onClick={handleBack} className="px-6 py-3 rounded-full border-2 border-[#e5e7eb] text-[#374151] font-medium hover:border-[#215c4c] hover:text-[#215c4c] transition" type="button">← Back</button>
             ) : <div />}
-            <button
-              onClick={handleNext}
-              disabled={!canContinue || loading}
+            <button onClick={handleNext} disabled={!canContinue || loading}
               className={`px-8 py-3 rounded-full font-semibold transition-all shadow-md hover:shadow-lg ${!canContinue || loading ? "bg-gray-300 text-gray-500 cursor-not-allowed" : "bg-gradient-to-r from-[#215c4c] to-[#2a7a66] text-white hover:scale-105"}`}
-              type="button"
-            >
+              type="button">
               {loading ? (
                 <span className="flex items-center gap-2">
                   <span className="inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
@@ -727,7 +749,6 @@ export default function BookAppointment() {
               <p className="text-white/80 text-sm mt-1">Complete your booking</p>
               <button type="button" onClick={() => !paying && setPaymentOpen(false)} className="absolute top-4 right-4 h-9 w-9 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center" aria-label="Close">✕</button>
             </div>
-
             <div className="p-6 space-y-6 flex-1 overflow-y-auto">
               <div className="bg-gradient-to-br from-[#f2fbf5] to-[#e8f5e9] rounded-2xl p-4 border border-[#a8d4c3]">
                 <h3 className="font-semibold text-[#1e293b] mb-3 text-sm">Booking Summary</h3>
@@ -738,7 +759,6 @@ export default function BookAppointment() {
                   <div className="flex items-center gap-2 text-sm"><span className="text-[#6b7280]">{sessionTypeIcon} Type:</span><span className="font-semibold text-[#1e293b]">{sessionTypeLabel}</span></div>
                 </div>
               </div>
-
               <div className="bg-white border-2 border-[#e5e7eb] rounded-xl p-4">
                 <p className="text-sm text-[#6b7280] mb-1">Amount to Pay</p>
                 <div className="flex items-baseline gap-1">
@@ -746,7 +766,6 @@ export default function BookAppointment() {
                   <span className="text-[#6b7280]">NPR</span>
                 </div>
               </div>
-
               <div className="space-y-3">
                 <p className="text-sm font-semibold text-[#374151]">Select Payment Method</p>
                 <div className="space-y-2">
@@ -754,23 +773,15 @@ export default function BookAppointment() {
                     <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${paymentMethod === "esewa" ? "border-[#215c4c] bg-[#215c4c]" : "border-[#d1d5db]"}`}>
                       {paymentMethod === "esewa" && <span className="text-white text-sm">✓</span>}
                     </div>
-                    <span className="text-left">
-                      <div className="font-semibold text-[#1e293b]">eSewa</div>
-                      <p className="text-xs text-[#6b7280]">Enabled for sandbox payment</p>
-                    </span>
+                    <span className="text-left"><div className="font-semibold text-[#1e293b]">eSewa</div><p className="text-xs text-[#6b7280]">Enabled for sandbox payment</p></span>
                   </button>
                   <button type="button" disabled className="w-full p-4 rounded-xl border-2 border-[#e5e7eb] opacity-50 cursor-not-allowed flex items-center gap-3">
                     <div className="w-6 h-6 rounded-full border-2 border-[#d1d5db] flex items-center justify-center flex-shrink-0" />
                     <span className="text-left"><div className="font-semibold text-[#1e293b]">Khalti</div><p className="text-xs text-[#6b7280]">Coming next</p></span>
                   </button>
-                  <button type="button" disabled className="w-full p-4 rounded-xl border-2 border-[#e5e7eb] opacity-50 cursor-not-allowed flex items-center gap-3">
-                    <div className="w-6 h-6 rounded-full border-2 border-[#d1d5db] flex items-center justify-center flex-shrink-0" />
-                    <span className="text-left"><div className="font-semibold text-[#1e293b]">Credit/Debit Card</div><p className="text-xs text-[#6b7280]">Not enabled yet</p></span>
-                  </button>
                 </div>
               </div>
             </div>
-
             <div className="px-6 py-4 bg-gray-50 border-t border-[#e5e7eb] flex flex-col gap-3">
               {!paymentData ? (
                 <div className="flex gap-3">

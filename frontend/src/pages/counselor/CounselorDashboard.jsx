@@ -2,44 +2,44 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import ChatPanel from "./ChatPanel";
 import api from "../../utils/api";
+import CounselorAvailabilitySettings from "./CounselorAvailabilitySettings";
+import {
+  PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer,
+  BarChart, Bar, XAxis, YAxis, CartesianGrid,
+} from "recharts";
 
 const SESSION_DURATION_MINUTES = 60;
+
+const CHART_COLORS = {
+  chat:  "#2a6b5e",
+  video: "#89c4b0",
+  bar:   "#1f4e43",
+};
 
 export default function CounselorDashboard() {
   const navigate = useNavigate();
 
   const [open, setOpen] = useState(false);
-
   const [counselor, setCounselor] = useState(null);
   const [isLoadingCounselor, setIsLoadingCounselor] = useState(true);
   const [counselorError, setCounselorError] = useState("");
-
   const [activeTab, setActiveTab] = useState("overview");
 
   const storedCounselor = useMemo(() => {
-    try {
-      return JSON.parse(localStorage.getItem("counselor_data")) || null;
-    } catch {
-      return null;
-    }
+    try { return JSON.parse(localStorage.getItem("counselor_data")) || null; }
+    catch { return null; }
   }, []);
 
   const [isOnline, setIsOnline] = useState(() => {
     try {
       const v = localStorage.getItem("counselor_online");
       return v === null ? true : JSON.parse(v);
-    } catch {
-      return true;
-    }
+    } catch { return true; }
   });
 
   const [sessions, setSessions] = useState([]);
   const [sessionsLoading, setSessionsLoading] = useState(true);
   const [sessionsError, setSessionsError] = useState("");
-
-  const [personalNotes, setPersonalNotes] = useState("");
-  const [notesLoading, setNotesLoading] = useState(true);
-  const [notesError, setNotesError] = useState("");
 
   const [materials, setMaterials] = useState([]);
   const [materialsLoading, setMaterialsLoading] = useState(true);
@@ -64,19 +64,18 @@ export default function CounselorDashboard() {
     summary: "",
   });
 
-  // ── Video state ──
   const [videoLoading, setVideoLoading] = useState({});
   const [videoError, setVideoError] = useState({});
 
-  const counselorName = counselor?.name || counselor?.full_name || "";
-  const counselorEmail = counselor?.email || "";
-  const counselorSpecialization = counselor?.specialization || "";
-  const counselorBio = counselor?.bio || "";
-  const counselorAvailableHours = counselor?.available_hours || counselor?.availableHours || "";
-  const counselorPayoutInfo = counselor?.payoutInfo || "";
+  const counselorName             = counselor?.name || counselor?.full_name || "";
+  const counselorEmail            = counselor?.email || "";
+  const counselorSpecialization   = counselor?.specialization || "";
+  const counselorBio              = counselor?.bio || "";
+  const counselorAvailableHours   = counselor?.available_hours || counselor?.availableHours || "";
+  const counselorPayoutInfo       = counselor?.payoutInfo || "";
 
-  const counselorNameLabel = counselorName || storedCounselor?.name || storedCounselor?.full_name || "—";
-  const counselorEmailLabel = counselorEmail || storedCounselor?.email || "—";
+  const counselorNameLabel          = counselorName || storedCounselor?.name || storedCounselor?.full_name || "—";
+  const counselorEmailLabel         = counselorEmail || storedCounselor?.email || "—";
   const counselorSpecializationLabel = counselorSpecialization || storedCounselor?.specialization || "—";
 
   const pad2 = (v) => String(v).padStart(2, "0");
@@ -203,23 +202,50 @@ export default function CounselorDashboard() {
       const sum = quizSessions.reduce((acc, s) => acc + Number(s.quiz?.[key] || 0), 0);
       return Math.round((sum / quizSessions.length) * 10);
     };
+
+    // Pie chart data
+    const chatCount  = completedSessions.filter((s) => s.type !== "video").length;
+    const videoCount = completedSessions.filter((s) => s.type === "video").length;
+    const sessionTypePieData = [
+      { name: "Chat",       value: chatCount  },
+      { name: "Video Call", value: videoCount },
+    ].filter((d) => d.value > 0);
+
+    // Bar chart: last 7 days
+    const now = new Date();
+    const last7 = Array.from({ length: 7 }, (_, i) => {
+      const d = new Date(now);
+      d.setDate(now.getDate() - (6 - i));
+      const key = `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+      const label = d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+      return { key, label, count: 0 };
+    });
+    completedSessions.forEach((s) => {
+      if (!s.rawDate) return;
+      const entry = last7.find((d) => d.key === s.rawDate);
+      if (entry) entry.count += 1;
+    });
+
     return {
       todayTotal: todaySessions.length,
       pendingApprovals,
       upcomingAppointments: upcomingSessions.length,
       avgRating,
       moodTrends: [
-        { label: "Stress", value: avg("stress") },
+        { label: "Stress",  value: avg("stress")  },
         { label: "Anxiety", value: avg("anxiety") },
-        { label: "Sleep", value: avg("sleep") },
+        { label: "Sleep",   value: avg("sleep")   },
       ],
+      sessionTypePieData,
+      sessionsOverTime: last7,
+      chatCount,
+      videoCount,
     };
-  }, [sessions, todaySessions.length, upcomingSessions.length]);
+  }, [sessions, completedSessions, todaySessions.length, upcomingSessions.length]);
 
-  // ── Join Video as counselor ──
-const handleJoinVideoAsCounselor = (sessionId) => {
-  navigate(`/counselor/video-room/${sessionId}`);
-};
+  const handleJoinVideoAsCounselor = (sessionId) => {
+    navigate(`/counselor/video-room/${sessionId}`);
+  };
 
   useEffect(() => {
     const loadCounselor = async () => {
@@ -292,29 +318,14 @@ const handleJoinVideoAsCounselor = (sessionId) => {
       setMaterialsError("");
       setMaterialsLoading(true);
       try {
-        const { data } = await api.get("/counselor/materials");
-        setMaterials(Array.isArray(data) ? data : data?.data || []);
+        // Only fetch THIS counselor's uploads
+        const { data } = await api.get("/counselor/resources");
+        setMaterials(data?.items || []);
       } catch (err) {
-        setMaterialsError(err?.response?.data?.message || "Failed to load materials.");
+        setMaterialsError(err?.response?.data?.message || "Failed to load resources.");
         setMaterials([]);
       } finally {
         setMaterialsLoading(false);
-      }
-    };
-
-    const loadNotes = async () => {
-      setNotesError("");
-      setNotesLoading(true);
-      try {
-        const { data } = await api.get("/counselor/notes");
-        if (typeof data === "string") setPersonalNotes(data);
-        else if (typeof data?.notes === "string") setPersonalNotes(data.notes);
-        else setPersonalNotes("");
-      } catch (err) {
-        setNotesError(err?.response?.data?.message || "Failed to load notes.");
-        setPersonalNotes("");
-      } finally {
-        setNotesLoading(false);
       }
     };
 
@@ -335,7 +346,6 @@ const handleJoinVideoAsCounselor = (sessionId) => {
     loadCounselor();
     loadSessions();
     loadMaterials();
-    loadNotes();
     loadSharedContent();
 
     const interval = setInterval(() => { loadSessions(); }, 30000);
@@ -396,12 +406,14 @@ const handleJoinVideoAsCounselor = (sessionId) => {
     }
   };
 
-  const savePersonalNotes = async (notesPayload = personalNotes) => {
-    setNotesError("");
+  const handleDeleteMaterial = async (id) => {
+    if (!window.confirm("Delete this resource? It will be removed for users too.")) return;
+    setMaterialsError("");
     try {
-      await api.post("/counselor/notes", { notes: notesPayload });
+      await api.delete(`/counselor/resources/${id}`);
+      setMaterials((prev) => prev.filter((m) => m.id !== id));
     } catch (err) {
-      setNotesError(err?.response?.data?.message || "Failed to save notes.");
+      setMaterialsError(err?.response?.data?.message || "Failed to delete resource.");
     }
   };
 
@@ -412,11 +424,13 @@ const handleJoinVideoAsCounselor = (sessionId) => {
     try {
       const payload = new FormData();
       payload.append("file", file);
-      await api.post("/counselor/materials", payload, { headers: { "Content-Type": "multipart/form-data" } });
-      const { data } = await api.get("/counselor/materials");
-      setMaterials(Array.isArray(data) ? data : data?.data || []);
+      // Upload to /counselor/resources → saves into mental_health_resources table
+      await api.post("/counselor/resources", payload, { headers: { "Content-Type": "multipart/form-data" } });
+      // Reload only this counselor's uploads
+      const { data } = await api.get("/counselor/resources");
+      setMaterials(data?.items || []);
     } catch (err) {
-      setMaterialsError(err?.response?.data?.message || "Failed to upload material.");
+      setMaterialsError(err?.response?.data?.message || "Failed to upload resource.");
     } finally {
       setMaterialsLoading(false);
     }
@@ -450,15 +464,15 @@ const handleJoinVideoAsCounselor = (sessionId) => {
   };
 
   const tabs = [
-    { key: "overview",   label: "Overview",         icon: "🏠" },
-    { key: "sessions",   label: "Sessions",          icon: "📅" },
-    { key: "interaction",label: "Client Chat",       icon: "💬" },
-    { key: "analytics",  label: "Analytics",         icon: "📊" },
-    { key: "resources",  label: "Notes & Resources", icon: "📝" },
-    { key: "settings",   label: "Settings",          icon: "⚙️" },
+    { key: "overview",      label: "Overview",      icon: "🏠" },
+    { key: "sessions",      label: "Sessions",       icon: "📅" },
+    { key: "interaction",   label: "Client Chat",    icon: "💬" },
+    { key: "analytics",     label: "Analytics",      icon: "📊" },
+    { key: "resources",     label: "Resources",      icon: "📁" },
+    { key: "availability",  label: "Availability",   icon: "🗓️" },
+    { key: "settings",      label: "Settings",       icon: "⚙️"  },
   ];
 
-  /* ===================== RENDER ===================== */
   return (
     <div className="min-h-screen bg-[#f8f6f0] flex">
 
@@ -578,12 +592,10 @@ const handleJoinVideoAsCounselor = (sessionId) => {
               <PanelCard title="Live Sessions" subtitle="Sessions that are active right now">
                 <div className="space-y-3">
                   {liveSessions.map((s) => (
-                    <SessionPreviewCard
-                      key={`live-${s.id}`}
-                      session={s}
+                    <SessionPreviewCard key={`live-${s.id}`} session={s}
                       onPrimary={() => { setSelectedSessionId(s.id); setActiveTab("interaction"); }}
                       onSecondary={() => { setSelectedSessionId(s.id); setActiveTab("resources"); }}
-                      onJoinVideo={handleJoinVideoAsCounselor}  
+                      onJoinVideo={handleJoinVideoAsCounselor}
                     />
                   ))}
                 </div>
@@ -630,7 +642,7 @@ const handleJoinVideoAsCounselor = (sessionId) => {
                   <div className="space-y-2.5">
                     <QuickActionBtn onClick={() => setActiveTab("interaction")}>💬 Start Session Chat</QuickActionBtn>
                     <QuickActionBtn secondary onClick={() => setActiveTab("sessions")}>📅 View Sessions</QuickActionBtn>
-                    <QuickActionBtn secondary onClick={() => setActiveTab("resources")}>📝 Notes & Resources</QuickActionBtn>
+                    <QuickActionBtn secondary onClick={() => setActiveTab("resources")}>📁 Resources</QuickActionBtn>
                     <QuickActionBtn secondary onClick={() => setActiveTab("analytics")}>📊 View Analytics</QuickActionBtn>
                   </div>
                 </PanelCard>
@@ -714,92 +726,206 @@ const handleJoinVideoAsCounselor = (sessionId) => {
 
         {/* ── Analytics tab ── */}
         {activeTab === "analytics" && (
-          <PanelCard title="Analytics" subtitle="Track practice activity and client outcome trends">
-            <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
-              <StatCard title="Completed" value={completedSessions.length} hint="Finished sessions" icon="✅" />
-              <StatCard title="Pending Approvals" value={analytics.pendingApprovals} hint="Awaiting response" icon="⏳" />
-              <StatCard title="Upcoming" value={analytics.upcomingAppointments} hint="Booked ahead" icon="📅" />
-              <StatCard title="Avg Rating" value={analytics.avgRating} hint="Client feedback" icon="⭐" />
-            </div>
-            <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
-              {analytics.moodTrends.map((m) => (
-                <div key={m.label} className="rounded-2xl border border-[#e7e5de] bg-white p-4">
-                  <div className="text-sm font-semibold text-[#1c2522]">{m.label}</div>
-                  <div className="mt-3 h-3 rounded-full bg-[#e9ece6] overflow-hidden">
-                    <div className="h-full bg-gradient-to-r from-[#1f4e43] to-[#2a6b5e]" style={{ width: `${Math.min(m.value, 100)}%` }} />
+          <div className="space-y-6">
+
+            <PanelCard title="Analytics" subtitle="Track practice activity and client outcome trends">
+              <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
+                <StatCard title="Completed" value={completedSessions.length} hint="Finished sessions" icon="✅" />
+                <StatCard title="Pending Approvals" value={analytics.pendingApprovals} hint="Awaiting response" icon="⏳" />
+                <StatCard title="Upcoming" value={analytics.upcomingAppointments} hint="Booked ahead" icon="📅" />
+                <StatCard title="Avg Rating" value={analytics.avgRating} hint="Client feedback" icon="⭐" />
+              </div>
+            </PanelCard>
+
+            {/* Charts row */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+              {/* Pie: Chat vs Video */}
+              <div className="rounded-3xl border border-[#e7e5de] bg-white p-5 shadow-sm">
+                <div className="text-sm font-bold text-[#1f4e43] mb-1">Session Type Breakdown</div>
+                <div className="text-xs text-[#6b7280] mb-4">Chat vs video across completed sessions</div>
+                {completedSessions.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center h-48 rounded-2xl border border-dashed border-[#d6dbd2] bg-[#fbfcfa]">
+                    <div className="text-3xl mb-2">📊</div>
+                    <p className="text-sm text-[#6b7280]">No completed sessions yet</p>
                   </div>
-                  <div className="mt-2 text-xs text-[#6b7280]">{m.value}% trend level</div>
-                </div>
-              ))}
-            </div>
-            <div className="mt-6 space-y-3">
-              {completedSessions.length === 0 && <p className="text-sm text-[#6b7280]">No completed sessions yet.</p>}
-              {completedSessions.map((s) => (
-                <div key={`history-${s.id}`} className="rounded-2xl border border-[#e7e5de] bg-white p-4 shadow-sm">
-                  <div className="flex flex-col md:flex-row md:justify-between gap-3">
-                    <div>
-                      <div className="font-semibold text-[#1c2522]">{s.patient}</div>
-                      <div className="text-xs text-[#6b7280] mt-1">{s.date || "Not set"} · {s.time || "Not set"} · {s.type || "—"}</div>
-                      <div className="text-sm text-[#5f6d68] mt-2">{s.summary || s.notes || "No notes saved yet."}</div>
+                ) : (
+                  <>
+                    <ResponsiveContainer width="100%" height={220}>
+                      <PieChart>
+                        <Pie data={analytics.sessionTypePieData} cx="50%" cy="50%" innerRadius={55} outerRadius={85}
+                          paddingAngle={4} dataKey="value"
+                          label={({ name, percent }) => `${name} ${Math.round(percent * 100)}%`}
+                          labelLine={false}>
+                          {analytics.sessionTypePieData.map((_, index) => (
+                            <Cell key={`cell-${index}`} fill={index === 0 ? CHART_COLORS.chat : CHART_COLORS.video} />
+                          ))}
+                        </Pie>
+                        <Tooltip formatter={(value, name) => [`${value} session${value !== 1 ? "s" : ""}`, name]}
+                          contentStyle={{ borderRadius: "12px", border: "1px solid #e7e5de", fontSize: "12px" }} />
+                        <Legend iconType="circle" iconSize={10} wrapperStyle={{ fontSize: "12px", paddingTop: "8px" }} />
+                      </PieChart>
+                    </ResponsiveContainer>
+                    <div className="mt-3 flex gap-3 justify-center">
+                      <div className="flex items-center gap-2 rounded-2xl border border-[#e7e5de] bg-[#f9faf8] px-4 py-2">
+                        <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: CHART_COLORS.chat }} />
+                        <span className="text-xs text-[#1c2522] font-semibold">💬 Chat — {analytics.chatCount}</span>
+                      </div>
+                      <div className="flex items-center gap-2 rounded-2xl border border-[#e7e5de] bg-[#f9faf8] px-4 py-2">
+                        <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: CHART_COLORS.video }} />
+                        <span className="text-xs text-[#1c2522] font-semibold">🎥 Video — {analytics.videoCount}</span>
+                      </div>
                     </div>
-                    <button onClick={() => openSummaryModal(s.id)} className="px-4 py-2 rounded-xl border border-[#e7e5de] text-xs font-semibold hover:bg-[#f7f8f5] transition self-start">Open Summary</button>
+                  </>
+                )}
+              </div>
+
+              {/* Bar: Sessions over last 7 days */}
+              <div className="rounded-3xl border border-[#e7e5de] bg-white p-5 shadow-sm">
+                <div className="text-sm font-bold text-[#1f4e43] mb-1">Sessions Over Time</div>
+                <div className="text-xs text-[#6b7280] mb-4">Completed sessions — last 7 days</div>
+                {completedSessions.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center h-48 rounded-2xl border border-dashed border-[#d6dbd2] bg-[#fbfcfa]">
+                    <div className="text-3xl mb-2">📈</div>
+                    <p className="text-sm text-[#6b7280]">No completed sessions yet</p>
                   </div>
-                </div>
-              ))}
+                ) : (
+                  <ResponsiveContainer width="100%" height={240}>
+                    <BarChart data={analytics.sessionsOverTime} margin={{ top: 4, right: 8, left: -20, bottom: 0 }} barSize={24}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f0ede8" vertical={false} />
+                      <XAxis dataKey="label" tick={{ fontSize: 10, fill: "#83918b" }} axisLine={false} tickLine={false} />
+                      <YAxis allowDecimals={false} tick={{ fontSize: 10, fill: "#83918b" }} axisLine={false} tickLine={false} />
+                      <Tooltip formatter={(value) => [`${value} session${value !== 1 ? "s" : ""}`, "Completed"]}
+                        contentStyle={{ borderRadius: "12px", border: "1px solid #e7e5de", fontSize: "12px" }}
+                        cursor={{ fill: "#f0ede8" }} />
+                      <Bar dataKey="count" fill={CHART_COLORS.bar} radius={[6, 6, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                )}
+              </div>
             </div>
-          </PanelCard>
+
+            {/* Mood trends */}
+            <div className="rounded-3xl border border-[#e7e5de] bg-white p-5 shadow-sm">
+              <div className="text-sm font-bold text-[#1f4e43] mb-1">Client Mood Trends</div>
+              <div className="text-xs text-[#6b7280] mb-4">Average across quiz-shared sessions</div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {analytics.moodTrends.map((m) => (
+                  <div key={m.label} className="rounded-2xl border border-[#e7e5de] bg-[#f9faf8] p-4">
+                    <div className="text-sm font-semibold text-[#1c2522]">{m.label}</div>
+                    <div className="mt-3 h-3 rounded-full bg-[#e9ece6] overflow-hidden">
+                      <div className="h-full bg-gradient-to-r from-[#1f4e43] to-[#2a6b5e] transition-all duration-700"
+                        style={{ width: `${Math.min(m.value, 100)}%` }} />
+                    </div>
+                    <div className="mt-2 text-xs text-[#6b7280]">{m.value}% trend level</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Session history */}
+            <div className="rounded-3xl border border-[#e7e5de] bg-white p-5 shadow-sm">
+              <div className="text-sm font-bold text-[#1f4e43] mb-1">Session History</div>
+              <div className="text-xs text-[#6b7280] mb-4">All completed sessions with summaries</div>
+              <div className="space-y-3">
+                {completedSessions.length === 0 && <p className="text-sm text-[#6b7280]">No completed sessions yet.</p>}
+                {completedSessions.map((s) => (
+                  <div key={`history-${s.id}`} className="rounded-2xl border border-[#e7e5de] bg-[#f9faf8] p-4">
+                    <div className="flex flex-col md:flex-row md:justify-between gap-3">
+                      <div>
+                        <div className="font-semibold text-[#1c2522]">{s.patient}</div>
+                        <div className="text-xs text-[#6b7280] mt-1">
+                          {s.date || "Not set"} · {s.time || "Not set"} ·{" "}
+                          <span className="capitalize">{s.type === "video" ? "🎥 Video" : "💬 Chat"}</span>
+                          {typeof s.rating === "number" && <span className="ml-2">· ⭐ {s.rating}/5</span>}
+                        </div>
+                        <div className="text-sm text-[#5f6d68] mt-2">{s.summary || s.notes || "No notes saved yet."}</div>
+                      </div>
+                      <button onClick={() => openSummaryModal(s.id)}
+                        className="px-4 py-2 rounded-xl border border-[#e7e5de] text-xs font-semibold hover:bg-[#f0ede8] transition self-start">
+                        Open Summary
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
         )}
 
-        {/* ── Notes & Resources tab ── */}
+        {/* ── Resources tab ── (notes removed, resources only) */}
         {activeTab === "resources" && (
-          <PanelCard title="Session Notes & Resources" subtitle="Keep private counselor notes and upload support materials">
-            <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-              <div className="rounded-3xl border border-[#e7e5de] p-5 bg-white">
-                <div className="text-sm font-semibold text-[#1c2522]">Private Notes</div>
-                <div className="text-xs text-[#6b7280] mt-1">Only visible to you</div>
-                {notesLoading && <p className="mt-3 text-sm text-[#6b7280]">Loading notes...</p>}
-                {!notesLoading && notesError && <p className="mt-3 text-sm text-red-600">{notesError}</p>}
-                <textarea value={personalNotes} onChange={(e) => setPersonalNotes(e.target.value)}
-                  className="mt-4 w-full min-h-[220px] rounded-2xl border border-[#e7e5de] bg-[#f9faf8] p-3 text-sm outline-none focus:ring-2 focus:ring-[#1f4e43]/20"
-                  placeholder="Write your private counselor notes..." />
-                <div className="mt-4 flex justify-end">
-                  <button onClick={() => savePersonalNotes()} className="px-5 py-2.5 bg-gradient-to-r from-[#1f4e43] to-[#2a6b5e] text-white rounded-2xl text-sm font-semibold hover:shadow-lg hover:-translate-y-0.5 transition shadow-md">Save Notes</button>
-                </div>
-              </div>
-              <div className="rounded-3xl border border-[#e7e5de] p-5 bg-white">
-                <div className="text-sm font-semibold text-[#1c2522]">Upload Materials</div>
-                <div className="text-xs text-[#6b7280] mt-1">PDFs, worksheets, guides, or self-help resources</div>
-                {materialsError && <p className="mt-3 text-sm text-red-600">{materialsError}</p>}
-                <label className="mt-4 block rounded-2xl border border-dashed border-[#c9ddd6] bg-[#eef7f3] p-5 cursor-pointer hover:bg-[#e4f1ed] transition">
-                  <input type="file" className="hidden" onChange={(e) => handleUploadMaterial(e.target.files?.[0])} />
-                  <div className="text-sm font-medium text-[#1f4e43]">{materialsLoading ? "Uploading..." : "Click to choose a file"}</div>
-                  <div className="text-xs text-[#6b7280] mt-1">PDFs, docs, images accepted</div>
-                </label>
-                <div className="mt-4 space-y-2">
-                  {materials.length === 0 && !materialsLoading && <p className="text-sm text-[#6b7280]">No materials uploaded yet.</p>}
-                  {materials.map((item, idx) => (
-                    <div key={item.id || idx} className="rounded-2xl border border-[#e7e5de] bg-[#f9faf8] px-3 py-3 text-sm text-[#1c2522]">
-                      {item.title || item.name || item.file_name || `Material ${idx + 1}`}
+          <PanelCard title="Resources" subtitle="Upload and manage support materials for your sessions">
+
+            {/* Upload Materials */}
+            <div className="rounded-3xl border border-[#e7e5de] p-5 bg-white mb-6">
+              <div className="text-sm font-semibold text-[#1c2522]">Upload Materials</div>
+              <div className="text-xs text-[#6b7280] mt-1">PDFs, worksheets, guides, or self-help resources</div>
+              {materialsError && <p className="mt-3 text-sm text-red-600">{materialsError}</p>}
+              <label className="mt-4 block rounded-2xl border border-dashed border-[#c9ddd6] bg-[#eef7f3] p-6 cursor-pointer hover:bg-[#e4f1ed] transition text-center">
+                <input type="file" className="hidden" onChange={(e) => handleUploadMaterial(e.target.files?.[0])} />
+                <div className="text-3xl mb-2">📂</div>
+                <div className="text-sm font-medium text-[#1f4e43]">{materialsLoading ? "Uploading..." : "Click to choose a file"}</div>
+                <div className="text-xs text-[#6b7280] mt-1">PDFs, docs, images accepted</div>
+              </label>
+              <div className="mt-4 space-y-2">
+                {materials.length === 0 && !materialsLoading && (
+                  <div className="text-center py-6 rounded-2xl border border-dashed border-[#d6dbd2] bg-[#fbfcfa]">
+                    <p className="text-sm text-[#6b7280]">No resources uploaded yet.</p>
+                  </div>
+                )}
+                {materials.map((item, idx) => (
+                  <div key={item.id || idx} className="rounded-2xl border border-[#e7e5de] bg-[#f9faf8] px-4 py-3 flex items-center gap-3">
+                    <span className="text-lg flex-shrink-0">
+                      {item.type === "video" ? "🎥" : item.type === "audio" ? "🎧" : "📄"}
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-[#1c2522] truncate">{item.title || item.name || item.file_name || `Resource ${idx + 1}`}</p>
+                      {item.type && <p className="text-xs text-[#6b7280] capitalize mt-0.5">{item.type}</p>}
                     </div>
-                  ))}
-                </div>
+                    {item.resource_url && (
+                      <a href={item.resource_url} target="_blank" rel="noreferrer"
+                        className="text-xs font-semibold text-[#1f4e43] hover:underline flex-shrink-0">
+                        View →
+                      </a>
+                    )}
+                    <button
+                      onClick={() => handleDeleteMaterial(item.id)}
+                      className="text-xs font-semibold text-red-500 hover:text-red-700 flex-shrink-0 px-2 py-1 rounded-xl hover:bg-red-50 transition"
+                      title="Delete resource"
+                    >
+                      🗑
+                    </button>
+                  </div>
+                ))}
               </div>
             </div>
-            <div className="mt-6 rounded-3xl border border-[#e7e5de] p-5 bg-white">
+
+            {/* Shared Platform Content */}
+            <div className="rounded-3xl border border-[#e7e5de] p-5 bg-white">
               <div className="text-sm font-semibold text-[#1c2522]">Shared Platform Content</div>
               <div className="text-xs text-[#6b7280] mt-1">Content shared across the platform</div>
               {sharedContentLoading && <p className="mt-3 text-sm text-[#6b7280]">Loading content...</p>}
               {!sharedContentLoading && sharedContentError && <p className="mt-3 text-sm text-red-600">{sharedContentError}</p>}
               <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
-                {!sharedContentLoading && !sharedContentError && sharedContent.length === 0 && <p className="text-sm text-[#6b7280]">No shared content available.</p>}
+                {!sharedContentLoading && !sharedContentError && sharedContent.length === 0 && (
+                  <p className="text-sm text-[#6b7280]">No shared content available.</p>
+                )}
                 {sharedContent.map((item, idx) => (
-                  <div key={item.id || idx} className="rounded-2xl border border-[#e7e5de] bg-[#f9faf8] p-3">
+                  <div key={item.id || idx} className="rounded-2xl border border-[#e7e5de] bg-[#f9faf8] p-4">
                     <div className="font-medium text-[#1c2522]">{item.title || item.name || `Content ${idx + 1}`}</div>
                     <div className="text-xs text-[#6b7280] mt-1">{item.description || "Shared platform content"}</div>
                   </div>
                 ))}
               </div>
             </div>
+          </PanelCard>
+        )}
+
+        {/* ── Availability tab ── */}
+        {activeTab === "availability" && (
+          <PanelCard title="My Availability" subtitle="Set your weekly schedule and block specific dates off">
+            <CounselorAvailabilitySettings />
           </PanelCard>
         )}
 
@@ -911,7 +1037,6 @@ function Badge({ status = "pending" }) {
 function SessionPreviewCard({ session, onPrimary, onSecondary, onJoinVideo }) {
   const isVideo = session.type === "video";
   const isLive = session.phase === "live";
-
   return (
     <div className="rounded-2xl border border-[#e7e5de] bg-white p-4 shadow-sm hover:shadow-md transition">
       <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
@@ -924,21 +1049,11 @@ function SessionPreviewCard({ session, onPrimary, onSecondary, onJoinVideo }) {
         </div>
         <div className="flex gap-2">
           {isVideo && isLive ? (
-            <button
-              onClick={() => onJoinVideo?.(session.id)}
-              className="px-4 py-2 rounded-xl bg-gradient-to-r from-[#1f4e43] to-[#2a6b5e] text-white text-xs font-semibold hover:shadow-md transition"
-            >
-              🎥 Join Video
-            </button>
+            <button onClick={() => onJoinVideo?.(session.id)} className="px-4 py-2 rounded-xl bg-gradient-to-r from-[#1f4e43] to-[#2a6b5e] text-white text-xs font-semibold hover:shadow-md transition">🎥 Join Video</button>
           ) : (
-            <button
-              onClick={onPrimary}
-              className="px-4 py-2 rounded-xl bg-gradient-to-r from-[#1f4e43] to-[#2a6b5e] text-white text-xs font-semibold hover:shadow-md transition"
-            >
-              💬 Open Chat
-            </button>
+            <button onClick={onPrimary} className="px-4 py-2 rounded-xl bg-gradient-to-r from-[#1f4e43] to-[#2a6b5e] text-white text-xs font-semibold hover:shadow-md transition">💬 Open Chat</button>
           )}
-          <button onClick={onSecondary} className="px-4 py-2 rounded-xl border border-[#d7d9d0] text-xs font-semibold text-[#1f4e43] hover:bg-[#f7f8f5] transition">Write Notes</button>
+          <button onClick={onSecondary} className="px-4 py-2 rounded-xl border border-[#d7d9d0] text-xs font-semibold text-[#1f4e43] hover:bg-[#f7f8f5] transition">Resources</button>
         </div>
       </div>
     </div>
@@ -954,7 +1069,7 @@ function CompletedSessionCard({ session, onOpen }) {
           <p className="text-xs text-[#6b7280] mt-1">{session.date || "Not set"} · {session.time || "Not set"}</p>
           <p className="text-xs text-[#5f6d68] mt-2 line-clamp-2">{session.summary || session.notes || "No summary available yet."}</p>
         </div>
-        <button onClick={onOpen} className="px-4 py-2 rounded-xl border border-[#d7d9d0] text-xs font-semibold text-[#1f4e43] hover:bg-[#f7f8f5] transition self-start">View Notes</button>
+        <button onClick={onOpen} className="px-4 py-2 rounded-xl border border-[#d7d9d0] text-xs font-semibold text-[#1f4e43] hover:bg-[#f7f8f5] transition self-start">View Summary</button>
       </div>
     </div>
   );
@@ -1002,17 +1117,8 @@ function SessionGroup({ title, items = [], counselorName, onAccept, onDecline, o
 
             const isVideo = s.type === "video";
             const isChat  = s.type === "chat" || s.type === "Chat" || (!isVideo && s.type !== "video");
-
-            const canJoinChat =
-              isChat &&
-              s.phase === "live" &&
-              !["Declined", "Completed"].includes(s.computedStatus);
-
-            const canJoinVideo =
-              isVideo &&
-              s.phase === "live" &&
-              !["Declined", "Completed"].includes(s.computedStatus);
-
+            const canJoinChat  = isChat  && s.phase === "live" && !["Declined", "Completed"].includes(s.computedStatus);
+            const canJoinVideo = isVideo && s.phase === "live" && !["Declined", "Completed"].includes(s.computedStatus);
             const isVideoJoining = videoLoading[s.id] || false;
             const videoErr = videoError[s.id] || "";
 
@@ -1029,47 +1135,27 @@ function SessionGroup({ title, items = [], counselorName, onAccept, onDecline, o
                       <span>Phase: <span className="font-semibold text-[#1c2522] capitalize">{s.phase || "—"}</span></span>
                     </div>
                   </div>
-
                   <div className="flex items-center gap-2 flex-wrap justify-end">
                     <Badge status={displayBadge} />
-
                     {s.computedStatus === "Pending" && (
                       <>
                         <button onClick={() => onAccept(s.id)} className="px-3 py-2 rounded-xl bg-gradient-to-r from-[#1f4e43] to-[#2a6b5e] text-white text-xs font-semibold hover:shadow-md transition">Accept</button>
                         <button onClick={() => onDecline(s.id)} className="px-3 py-2 rounded-xl border border-[#d7d9d0] text-xs font-semibold text-[#1f4e43] hover:bg-[#f7f8f5] transition">Decline</button>
                       </>
                     )}
-
-                    {/* ── Chat join button ── */}
                     {canJoinChat && (
                       <button onClick={() => { onSelect?.(s.id); onOpenChat?.(); }}
                         className="px-3 py-2 rounded-xl bg-gradient-to-r from-[#1f4e43] to-[#2a6b5e] text-white text-xs font-semibold hover:shadow-md transition">
                         💬 Join Chat
                       </button>
                     )}
-
-                    {/* ── Video join button ── */}
                     {canJoinVideo && (
-                      <button
-                        onClick={() => onJoinVideo?.(s.id)}
-                        disabled={isVideoJoining}
-                        className={`px-3 py-2 rounded-xl text-xs font-semibold transition flex items-center gap-1.5 ${
-                          isVideoJoining
-                            ? "bg-gray-300 text-gray-500 cursor-not-allowed"
-                            : "bg-gradient-to-r from-[#1f4e43] to-[#2a6b5e] text-white hover:shadow-md"
-                        }`}
-                      >
-                        {isVideoJoining ? (
-                          <><span className="inline-block w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />Starting...</>
-                        ) : <>🎥 Join Video</>}
+                      <button onClick={() => onJoinVideo?.(s.id)} disabled={isVideoJoining}
+                        className={`px-3 py-2 rounded-xl text-xs font-semibold transition flex items-center gap-1.5 ${isVideoJoining ? "bg-gray-300 text-gray-500 cursor-not-allowed" : "bg-gradient-to-r from-[#1f4e43] to-[#2a6b5e] text-white hover:shadow-md"}`}>
+                        {isVideoJoining ? (<><span className="inline-block w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />Starting...</>) : <>🎥 Join Video</>}
                       </button>
                     )}
-
-                    {/* ── Video error ── */}
-                    {videoErr && (
-                      <p className="text-xs text-red-500 w-full text-right">{videoErr}</p>
-                    )}
-
+                    {videoErr && <p className="text-xs text-red-500 w-full text-right">{videoErr}</p>}
                     <button onClick={() => { onSelect?.(s.id); onOpenSummary?.(s.id); }}
                       className="px-3 py-2 rounded-xl border border-[#d7d9d0] text-xs font-semibold text-[#1f4e43] hover:bg-[#f7f8f5] transition">
                       📋 Session Notes

@@ -7,7 +7,7 @@ const generateRollingSlots = () => {
   const now = new Date();
   const totalMins = now.getHours() * 60 + now.getMinutes();
   const firstSlotMins = Math.ceil(totalMins / 10) * 10;
-  const endMins = 21 * 60;
+  const endMins = 19 * 60; // 7:00 PM (realistic counselor end time)
   const slots = [];
   for (let mins = firstSlotMins; mins <= endMins; mins += 10) {
     const h = Math.floor(mins / 60);
@@ -58,6 +58,9 @@ export default function BookAppointment() {
   const [loadingCounselors, setLoadingCounselors] = useState(false);
   const [counselorsError, setCounselorsError] = useState("");
 
+  // ── NEW: track slots confirmed to have no counselors available ──
+  const [unavailableSlots, setUnavailableSlots] = useState(new Set());
+
   const [autoFinding, setAutoFinding] = useState(false);
   const [checkedCount, setCheckedCount] = useState(0);
   const autoFindRef = useRef(false);
@@ -66,7 +69,6 @@ export default function BookAppointment() {
   const [guestBookingId, setGuestBookingId] = useState(null);
   const [guestTransactionUuid, setGuestTransactionUuid] = useState("");
 
-  // ── Session type state ──
   const [sessionType, setSessionType] = useState("chat");
 
   const [formData, setFormData] = useState({
@@ -98,12 +100,21 @@ export default function BookAppointment() {
     "Guest Payment",
   ][step - 1];
 
+  // Refresh slots every minute and clear stale unavailable slots
   useEffect(() => {
     const interval = setInterval(() => {
       const freshSlots = generateRollingSlots();
       setSlots(freshSlots);
       const now = new Date();
       setCurrentTime(now.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true }));
+
+      // Keep only unavailable slots that are still in the fresh list
+      const freshValues = new Set(freshSlots.map((s) => s.value));
+      setUnavailableSlots((prev) => {
+        const next = new Set([...prev].filter((v) => freshValues.has(v)));
+        return next;
+      });
+
       setSelectedSlot((prev) => {
         if (!prev) return prev;
         const still = freshSlots.find((s) => s.value === prev.value);
@@ -143,7 +154,8 @@ export default function BookAppointment() {
     setPageError("");
 
     const freshSlots = generateRollingSlots();
-    for (let i = 0; i < Math.min(freshSlots.length, 6); i++) {
+    // ── CHANGED: check up to 12 slots (~2 hrs) instead of 6 ──
+    for (let i = 0; i < Math.min(freshSlots.length, 12); i++) {
       if (!autoFindRef.current) break;
       setCheckedCount(i + 1);
       const slot = freshSlots[i];
@@ -154,10 +166,13 @@ export default function BookAppointment() {
         setAutoFinding(false);
         autoFindRef.current = false;
         return;
+      } else {
+        // ── NEW: mark this slot as unavailable while we scan ──
+        setUnavailableSlots((prev) => new Set([...prev, slot.value]));
       }
     }
 
-    setCounselorsError("No counselors are available in the next hour. Please try again soon.");
+    setCounselorsError("No counselors are available in the next 2 hours. Please try again soon.");
     setAutoFinding(false);
     autoFindRef.current = false;
   }, [fetchCounselorsForSlot]);
@@ -168,6 +183,9 @@ export default function BookAppointment() {
   }, []);
 
   const handleSlotClick = async (slot) => {
+    // ── NEW: ignore clicks on confirmed unavailable slots ──
+    if (unavailableSlots.has(slot.value)) return;
+
     autoFindRef.current = false;
     setAutoFinding(false);
     setSelectedSlot(slot);
@@ -177,7 +195,12 @@ export default function BookAppointment() {
     setLoadingCounselors(true);
     const found = await fetchCounselorsForSlot(slot);
     setCounselors(found);
-    if (found.length === 0) setCounselorsError("No counselors available for this slot. Try another time.");
+    if (found.length === 0) {
+      // ── NEW: mark slot unavailable so it greys out in the grid ──
+      setUnavailableSlots((prev) => new Set([...prev, slot.value]));
+      setCounselorsError("No counselors available for this slot. Try another time.");
+      setSelectedSlot(null); // deselect since it's not bookable
+    }
     setLoadingCounselors(false);
   };
 
@@ -226,7 +249,7 @@ export default function BookAppointment() {
         counselor_id: Number(formData.counselorId),
         date: getTodayISO(),
         time: selectedSlot.value,
-        session_type: sessionType, // ← dynamic now
+        session_type: sessionType,
         guest_name: formData.name,
         guest_email: formData.email,
         guest_phone: formData.phone,
@@ -398,7 +421,8 @@ export default function BookAppointment() {
                         <div className="w-8 h-8 rounded-full border-[3px] border-[#215c4c] border-t-transparent animate-spin flex-shrink-0" />
                         <div>
                           <div className="text-sm font-semibold text-[#1e473b]">Finding nearest available counselor...</div>
-                          <div className="text-xs text-neutral-500 mt-0.5">Checking slot {checkedCount} of 6</div>
+                          {/* ── CHANGED: shows out of 12 now ── */}
+                          <div className="text-xs text-neutral-500 mt-0.5">Checking slot {checkedCount} of 12</div>
                         </div>
                       </div>
                     </div>
@@ -426,7 +450,7 @@ export default function BookAppointment() {
                     </div>
                   )}
 
-                  {/* ── Session Type Selector ── */}
+                  {/* Session Type Selector */}
                   {!autoFinding && (
                     <div>
                       <div className="text-sm font-semibold text-neutral-700 mb-3">
@@ -466,18 +490,49 @@ export default function BookAppointment() {
                     </div>
                   )}
 
-                  {/* Manual slot picker */}
+                  {/* ── UPDATED: Manual slot picker with unavailable slot handling ── */}
                   {!autoFinding && slots.length > 0 && (
                     <div>
-                      <div className="text-sm font-semibold text-neutral-700 mb-3">Or choose a different time:</div>
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="text-sm font-semibold text-neutral-700">Or choose a different time:</div>
+                        {/* Legend */}
+                        <div className="flex items-center gap-3 text-xs text-neutral-500">
+                          <span className="flex items-center gap-1">
+                            <span className="w-3 h-3 rounded border border-[#efe7dc] bg-white inline-block" />
+                            Available
+                          </span>
+                          <span className="flex items-center gap-1">
+                            <span className="w-3 h-3 rounded border border-neutral-200 bg-neutral-100 inline-block" />
+                            Unavailable
+                          </span>
+                        </div>
+                      </div>
                       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 max-h-64 overflow-y-auto pr-1">
                         {slots.slice(0, 24).map((slot) => {
                           const isSelected = selectedSlot?.value === slot.value;
+                          const isUnavailable = unavailableSlots.has(slot.value);
+
                           return (
-                            <button key={slot.value} type="button" onClick={() => handleSlotClick(slot)} disabled={loadingCounselors}
-                              className={`rounded-2xl border px-3 py-3 text-sm text-left transition ${isSelected ? "border-[#215c4c] bg-[#f2fbf5] text-[#215c4c] shadow-sm" : "border-[#efe7dc] bg-white text-neutral-800 hover:bg-[#fafafa] hover:border-[#89ad8f]"}`}>
-                              <div className="font-semibold">{slot.label}</div>
-                              <div className="text-xs text-neutral-400 mt-0.5">{formatWaitTime(slot.minsFromNow)}</div>
+                            <button
+                              key={slot.value}
+                              type="button"
+                              onClick={() => handleSlotClick(slot)}
+                              disabled={loadingCounselors || isUnavailable}
+                              title={isUnavailable ? "No counselors available for this slot" : undefined}
+                              className={`rounded-2xl border px-3 py-3 text-sm text-left transition relative
+                                ${isSelected
+                                  ? "border-[#215c4c] bg-[#f2fbf5] text-[#215c4c] shadow-sm"
+                                  : isUnavailable
+                                  ? "border-neutral-200 bg-neutral-50 text-neutral-300 cursor-not-allowed opacity-60"
+                                  : "border-[#efe7dc] bg-white text-neutral-800 hover:bg-[#fafafa] hover:border-[#89ad8f]"
+                                }`}
+                            >
+                              <div className={`font-semibold ${isUnavailable ? "line-through" : ""}`}>
+                                {slot.label}
+                              </div>
+                              <div className={`text-xs mt-0.5 ${isUnavailable ? "text-neutral-300" : "text-neutral-400"}`}>
+                                {isUnavailable ? "No counselors" : formatWaitTime(slot.minsFromNow)}
+                              </div>
                             </button>
                           );
                         })}
@@ -496,7 +551,7 @@ export default function BookAppointment() {
                     <div className="rounded-2xl border border-gray-200 bg-gray-50 px-5 py-6 text-center">
                       <div className="text-2xl mb-2">🌙</div>
                       <div className="text-sm font-semibold text-neutral-700">No more slots available today</div>
-                      <div className="text-xs text-neutral-500 mt-1">Sessions run until 9:00 PM. Please come back tomorrow!</div>
+                      <div className="text-xs text-neutral-500 mt-1">Sessions run until 7:00 PM. Please come back tomorrow!</div>
                     </div>
                   )}
                 </div>

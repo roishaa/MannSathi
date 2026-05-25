@@ -25,6 +25,7 @@ use App\Http\Controllers\Api\MentalHealthResourceController;
 use App\Http\Controllers\Api\HospitalPaymentController;
 use App\Http\Controllers\CounselorNotesController;
 use App\Http\Controllers\VideoRoomController;
+use App\Http\Controllers\Api\CounselorAvailabilityController;
 
 Route::get('/health', function () {
     return response()->json(['status' => 'ok']);
@@ -136,6 +137,8 @@ Route::post('/google-login', [GoogleAuthController::class, 'login']);
 // ================= PUBLIC COUNSELORS =================
 Route::get('/counselors', [CounselorPublicController::class, 'index']);
 Route::get('/guest-counselors/available', [CounselorPublicController::class, 'availableForGuest']);
+Route::get('/counselor/availability/check', [CounselorAvailabilityController::class, 'check']);
+Route::get('/counselors/available', [CounselorPublicController::class, 'availableForDate']);
 
 // ================= PUBLIC GUEST BOOKING =================
 Route::post('/guest-bookings', [GuestBookingController::class, 'store']);
@@ -167,6 +170,7 @@ Route::middleware('multi.auth')->group(function () {
     });
 
     Route::post('/logout', [AuthController::class, 'logout']);
+    Route::get('/user/payments', [HospitalPaymentController::class, 'userPayments']);
 
     // ================= COUNSELOR DASHBOARD =================
     Route::get('/counselor/me', [CounselorDashboardController::class, 'me']);
@@ -179,7 +183,16 @@ Route::middleware('multi.auth')->group(function () {
     Route::get('/counselor/notes', [CounselorDashboardController::class, 'getNotes']);
     Route::post('/counselor/notes', [CounselorDashboardController::class, 'saveNotes']);
     Route::get('/content/shared', [CounselorDashboardController::class, 'sharedContent']);
-    
+    Route::post('/counselor/resources', [MentalHealthResourceController::class, 'store']);
+    Route::get('/counselor/resources',         [MentalHealthResourceController::class, 'counselorIndex']);
+    Route::post('/counselor/resources',        [MentalHealthResourceController::class, 'store']);
+    Route::delete('/counselor/resources/{id}', [MentalHealthResourceController::class, 'destroy']);
+
+    // Counselor availability
+    Route::get('/counselor/availability',          [CounselorAvailabilityController::class, 'index']);
+    Route::post('/counselor/availability',         [CounselorAvailabilityController::class, 'store']);
+    Route::post('/counselor/blocked-dates',        [CounselorAvailabilityController::class, 'blockDate']);
+    Route::delete('/counselor/blocked-dates/{id}', [CounselorAvailabilityController::class, 'unblockDate']);
 
     // ================= SHARED APPOINTMENT CHAT (USER + COUNSELOR) =================
     Route::get('/appointments/{appointment}/messages', [ChatController::class, 'index']);
